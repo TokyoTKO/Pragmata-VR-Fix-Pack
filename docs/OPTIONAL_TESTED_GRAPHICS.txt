@@ -1,0 +1,38 @@
+Optional reference — tested game graphics values.
+Not a replacement config.ini; do not copy this over your configuration.
+These are baseline choices, not universal hardware requirements.
+
+AmbientOcclusion=OFF
+AntiAlias=TAA
+Bloom=OFF
+ContactShadow=ON
+DLSSQuality=DLAA
+DLSSRayReconstruction=OFF
+DLSSReflexLowLatency=On
+DepthOfField=OFF
+DynamicResolution=OFF
+EffectQuality=High
+FSR1Quality=Balanced
+FSR3Quality=Balanced
+FrameGeneration=Off
+FrameRateSetting=Variable
+GIQuality=High
+LensDistortion=OFF
+LensFlare=OFF
+MeshQuality=HIGHEST
+MotionBlur=OFF
+MovieQuality=High
+PathTracing=OFF
+RayTracing=OFF
+Resolution=1920x1080
+ScreenSpaceReflection=OFF
+ShadowCache=ON
+ShadowQuality=HIGH
+StrandHair=Strand_High
+SubSurfaceScattering=ON
+TextureFilteringQuality=Anisotropic16
+TextureQuality=HIGHEST_3
+UpscalingAlgorithm=DLSS
+VSync=OFF
+VolumeLightQuality=STANDARD
+WindowMode=Normal

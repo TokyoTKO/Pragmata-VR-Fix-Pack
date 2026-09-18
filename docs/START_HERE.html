@@ -1,0 +1,118 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Pragmata VR Fix Pack — Start Here</title><style>body{max-width:850px;margin:35px auto;padding:0 20px;background:#fafafa;color:#202020;font:16px/1.6 system-ui}pre{font:inherit;white-space:pre-wrap;overflow-wrap:anywhere}a{color:#0754b8}</style></head><body><pre>PRAGMATA VR FIX PACK — EXPERIMENTAL v1
+
+Third-person VR using a gamepad. Prepared and tested by WinterWolf with coding assistance from
+GPT-6 Astra (Medium), built on the credited mod authors&#x27; work (see CREDITS).
+
+READ THIS FIRST
+This setup was tested through roughly the first 90 minutes of the game on one PC.
+The assembled download has not yet been tested on other installations/PCs.
+Provided as-is; compatibility, individual support and future updates are not
+promised. No motion-controller gameplay is provided.
+
+TESTED SETUP
+Windows 11; RTX 4090; Quest 3; Virtual Desktop with VDXR; gamepad.
+Virtual Desktop: Streamer 1.34.22 / headset 1.34.22 Beta-206.
+Game: Steam Deluxe Version-based installation. Installation on
+another clean Steam copy is unverified. Other editions, GPUs, headsets and
+runtimes are unverified too. RTX 40/50-series owners are the intended initial
+audience, but the 4090 is the only tested GPU.
+
+DOWNLOAD THESE THREE REQUIREMENTS
+1. _ScriptCore by alphaZomega and SilverEzredes (page version 1.2.06):
+   <a href="https://www.nexusmods.com/pragmata/mods/24?tab=files">https://www.nexusmods.com/pragmata/mods/24?tab=files</a>
+2. HUD Controls by kagenocookie (version 1.3.0, main file):
+   <a href="https://www.nexusmods.com/pragmata/mods/8?tab=files">https://www.nexusmods.com/pragmata/mods/8?tab=files</a>
+   Use Manual Download on Nexus; sign in if asked.
+3. PureDark AFW beta.6 — direct ZIP download:
+   <a href="https://github.com/PureDark/REFramework/releases/download/RE9_AFW_v1.0-beta.6/RE9AFW_v1.0-beta.6.zip">https://github.com/PureDark/REFramework/releases/download/RE9_AFW_v1.0-beta.6/RE9AFW_v1.0-beta.6.zip</a>
+   Release page if needed:
+   <a href="https://github.com/PureDark/REFramework/releases/tag/RE9_AFW_v1.0-beta.6">https://github.com/PureDark/REFramework/releases/tag/RE9_AFW_v1.0-beta.6</a>
+   Yes, this says RE9: its PDAFWPlugin.dll is the exact plugin tested here.
+   ONLY PDAFWPlugin.dll is needed. Do NOT copy its other DLLs.
+
+INSTALL — WITH THE GAME CLOSED
+1. Find the folder containing PRAGMATA.exe. In Steam, use the game&#x27;s
+   Manage &gt; Browse local files option.
+2. If already modded, COPY these items to a backup folder outside the game:
+   dinput8.dll, openxr_loader.dll, PDAFWPlugin.dll, re2_fw_config.txt,
+   config.ini and the entire reframework folder (whichever exist).
+3. Extract _ScriptCore. Locate its reframework folder and copy that folder
+   into the game folder, merging folders. If using Fluffy Mod Manager instead,
+   follow _ScriptCore&#x27;s page instructions and enable it before step 6.
+4. Extract HUD Controls. Put hud_controls.lua in reframework/autorun.
+   If its archive provides a reframework folder, merge that into the game folder.
+5. From the AFW beta.6 ZIP, copy ONLY PDAFWPlugin.dll beside PRAGMATA.exe.
+6. Extract THIS fix pack into the game folder LAST. Merge folders and replace
+   matching files after making the backup. Do not replace/delete whole folders.
+   You should now have dinput8.dll, openxr_loader.dll, PDAFWPlugin.dll and
+   re2_fw_config.txt directly beside PRAGMATA.exe.
+7. Check these files exist:
+   reframework/autorun/hud_controls.lua
+   reframework/autorun/Hotkeys/Hotkeys.lua
+   reframework/autorun/_SharedCore/Functions.lua
+   reframework/autorun/_SharedCore/Imgui.lua
+   reframework/data/hud_control_settings.json
+   If absent, fix the folder placement before launching.
+
+Do not install a nightly or another AFW build over this pack. Our modified
+REFramework is included. Keep the supplied scripts even when their names say
+probe, inspect or test: these particular scripts implement the fixes.
+If you already have our working setup, this release contains no new fixes;
+there is no need to reinstall it.
+
+SETTINGS AND FIRST LAUNCH
+- In Virtual Desktop Streamer: OpenXR Runtime = VDXR; codec = AV1 10-bit.
+- In the headset&#x27;s Virtual Desktop STREAMING tab:
+  VR Quality High; VR Frame Rate 90; SSW Disabled.
+  Tested extras: VR bitrate 200 Mbps; video buffering On; sharpening 10%;
+  gamma 1.00; automatic bitrate Off. These are VR streaming settings, not the
+  desktop/video settings. Wi-Fi may need a lower bitrate; USB was tested.
+- Connect the headset through Virtual Desktop, then launch Pragmata normally.
+- In the game: 1920x1080; frame rate Variable; VSync Off; DLSS with DLAA.
+  Turn OFF frame generation, ray tracing, path tracing, ray reconstruction,
+  screen-space reflections, ambient occlusion, motion blur and depth of field.
+  Apply the settings and restart the game before judging the result.
+- Aim for a steady 90 fps. If necessary, lower VR quality or game detail first.
+  DLSS Quality is an alternative to DLAA, but the supplied baseline uses DLAA.
+- Use a gamepad. If the REFramework menu is needed, check the PC display;
+  its dedicated menu overlay is not available in-headset in this setup.
+
+Do not reset HUD Controls or replace hud_control_settings.json with defaults.
+That file contains the prepared HUD sizes/positions. Your monitor-specific game
+config.ini is not overwritten by this pack.
+
+WHAT IS IMPROVED / WHAT REMAINS
+Fixes cover HUD placement, several hacking interfaces, objectives/hints,
+cinematic side bars, Shelter holoscreens, costume selection, Firmware Updater,
+head-following subtitles and the main menu.
+Remaining compromises: reflective surfaces (especially the Shelter), dark/faint
+location labels, reticle doubling when focusing at a different depth, and some
+loading-screen/cinematic artifacts. Later-game elements outside the first 90 minutes 
+remain untested and may affect play.
+
+IF THIS PACKAGE APPEARS NOT TO WORK
+First check file placement, the three requirements and the settings above.
+Avoid mixing another REFramework build or older experimental scripts into this
+setup. If it remains unusable, restore your backup; this release is experimental.
+Game/mod updates may change compatibility. This is not a full-game guarantee.
+
+REMOVE / RESTORE
+Close the game. Remove only the pack&#x27;s files listed in
+Pragmata_VR_Pack/FILES.txt, then restore any files/folders you backed up.
+PDAFWPlugin.dll, HUD Controls and _ScriptCore were installed separately; remove
+those only if you added them for this pack and no other mod needs them. Do not
+delete the whole reframework folder if other mods use it. Restore config.ini
+from your backup if you also want to undo the game graphics setting changes.
+
+CREDITS
+WinterWolf and GPT-6 Astra (Medium)
+
+ADDITIONAL CREDITS:
+praydog — REFramework: <a href="https://github.com/praydog/REFramework">https://github.com/praydog/REFramework</a>
+PureDark — AFW: <a href="https://github.com/PureDark/REFramework">https://github.com/PureDark/REFramework</a>
+kagenocookie — HUD Controls (Nexus link above).
+alphaZomega and SilverEzredes — _ScriptCore (Nexus link above).
+WinterWolf — project direction and headset testing.
+OpenXR loader — Khronos Group/OpenXR contributors.
+
+Third-party notices are in Pragmata_VR_Pack/Notices.</pre></body></html>

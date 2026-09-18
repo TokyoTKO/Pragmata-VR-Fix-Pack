@@ -1,0 +1,14 @@
+Experimental v1 — 17 September 2026
+Runtime payload unchanged from the supplied accepted V16 package.
+AFW plugin, HUD Controls and _ScriptCore are separate downloads.
+config.ini, game binaries, NVIDIA DLLs, logs and captures are not included.
+No clean-install or other-PC verification has been performed.
+
+Release identifier: pragmata-vr-v1
+Release-copy adjustment: embedded commit/branch labels replaced with neutral
+labels. Executable-code sections are byte-identical to the tested V16 DLL.
+This metadata-adjusted copy has not been run in-game.
+Expected separate PDAFWPlugin.dll SHA256:
+643281327028d156c83d7ed701a6c7176a8fdf46544b513da960fa12e5dfe259
+Tested NVIDIA DLL file version: 310.7.129.0 (not an established requirement).
+No default recommendation is made to replace the game's NVIDIA DLLs.
