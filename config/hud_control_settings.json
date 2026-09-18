@@ -1,0 +1,213 @@
+{
+    "_drawAsWindow": false,
+    "_hotkeys": {
+        "bossHp": "[Not Bound]",
+        "bossHp_h": "[Not Bound]",
+        "damageNumbers": "[Not Bound]",
+        "damageNumbers_h": "[Not Bound]",
+        "doorHackPanel": "[Not Bound]",
+        "doorHackPanel_h": "[Not Bound]",
+        "enemyHackPanel": "[Not Bound]",
+        "enemyHackPanel_h": "[Not Bound]",
+        "enemyHp": "[Not Bound]",
+        "enemyHp_h": "[Not Bound]",
+        "global": "[Not Bound]",
+        "global_h": "[Not Bound]",
+        "health": "[Not Bound]",
+        "health_h": "[Not Bound]",
+        "hudDeco": "[Not Bound]",
+        "hudDeco_h": "[Not Bound]",
+        "inputGuide": "[Not Bound]",
+        "inputGuide_h": "[Not Bound]",
+        "interactMarker": "[Not Bound]",
+        "interactMarker_h": "[Not Bound]",
+        "inventoryItem": "[Not Bound]",
+        "inventoryItem_h": "[Not Bound]",
+        "lockHackPanel": "[Not Bound]",
+        "lockHackPanel_h": "[Not Bound]",
+        "objective": "[Not Bound]",
+        "objective_h": "[Not Bound]",
+        "pickupItemDetails": "[Not Bound]",
+        "pickupItemDetails_h": "[Not Bound]",
+        "reticle": "[Not Bound]",
+        "reticle_h": "[Not Bound]",
+        "stamina": "[Not Bound]",
+        "stamina_h": "[Not Bound]",
+        "subtitles": "[Not Bound]",
+        "subtitles_h": "[Not Bound]",
+        "targetMarker": "[Not Bound]",
+        "targetMarker_h": "[Not Bound]",
+        "weaponWheel": "[Not Bound]",
+        "weaponWheel_h": "[Not Bound]"
+    },
+    "_other": {
+        "disable_aberrations": true,
+        "fade_in_time": 0.4,
+        "fade_out_time": 0.25,
+        "unknowns": {
+            "ui2100Gui": false
+        }
+    },
+    "_showRuleHelp": false,
+    "_version": 7,
+    "bossHp": {
+        "default_hide": false,
+        "toggle_override_rule": 0
+    },
+    "damageNumbers": {
+        "default_hide": false,
+        "toggle_override_rule": 0
+    },
+    "doorHackPanel": {
+        "default_hide": false,
+        "positioning": {
+            "offset_x": -199.225,
+            "offset_y": 90,
+            "scale_x": 0.78125,
+            "scale_y": 0.78125
+        },
+        "toggle_override_rule": 0
+    },
+    "enemyHackPanel": {
+        "default_hide": false,
+        "positioning": {
+            "offset_x": -210,
+            "offset_y": 206.25,
+            "scale_x": 0.75,
+            "scale_y": 0.75
+        },
+        "toggle_override_rule": 0
+    },
+    "enemyHp": {
+        "default_hide": false,
+        "toggle_override_rule": 0
+    },
+    "global": {
+        "default_hide": false,
+        "toggle_override_rule": 0
+    },
+    "health": {
+        "default_hide": false,
+        "toggle_override_rule": 0,
+        "positioning": {
+            "offset_x": 0,
+            "offset_y": 0,
+            "scale_x": 2,
+            "scale_y": 2
+        }
+    },
+    "hudDeco": {
+        "default_hide": false,
+        "positioning": {
+            "offset_x": 0,
+            "offset_y": 0,
+            "scale_x": 1,
+            "scale_y": 1
+        },
+        "toggle_override_rule": 0
+    },
+    "inputGuide": {
+        "default_hide": false,
+        "positioning": {
+            "offset_x": 0,
+            "offset_y": 0,
+            "scale_x": 1,
+            "scale_y": 1
+        },
+        "toggle_override_rule": 0
+    },
+    "interactMarker": {
+        "default_hide": false,
+        "positioning": {
+            "offset_x": 0,
+            "offset_y": 0,
+            "scale_x": 1,
+            "scale_y": 1
+        },
+        "toggle_override_rule": 0
+    },
+    "inventoryItem": {
+        "default_hide": false,
+        "positioning": {
+            "offset_x": 0,
+            "offset_y": 0,
+            "scale_x": 1,
+            "scale_y": 1
+        },
+        "toggle_override_rule": 0
+    },
+    "lockHackPanel": {
+        "default_hide": false,
+        "positioning": {
+            "offset_x": -460,
+            "offset_y": 70,
+            "scale_x": 0.5,
+            "scale_y": 0.5
+        },
+        "toggle_override_rule": 0
+    },
+    "objective": {
+        "default_hide": false,
+        "positioning": {
+            "offset_x": 0,
+            "offset_y": 0,
+            "scale_x": 1,
+            "scale_y": 1
+        },
+        "toggle_override_rule": 0
+    },
+    "pickupItemDetails": {
+        "default_hide": false,
+        "positioning": {
+            "offset_x": 0,
+            "offset_y": 0,
+            "scale_x": 1,
+            "scale_y": 1
+        },
+        "toggle_override_rule": 0
+    },
+    "reticle": {
+        "default_hide": false,
+        "toggle_override_rule": 0
+    },
+    "stamina": {
+        "default_hide": false,
+        "toggle_override_rule": 0,
+        "positioning": {
+            "offset_x": 0,
+            "offset_y": 0,
+            "scale_x": 2,
+            "scale_y": 2
+        }
+    },
+    "subtitles": {
+        "default_hide": false,
+        "positioning": {
+            "offset_x": 0,
+            "offset_y": 200,
+            "scale_x": 1,
+            "scale_y": 1
+        },
+        "toggle_override_rule": 0
+    },
+    "targetMarker": {
+        "default_hide": false,
+        "positioning": {
+            "offset_x": 0,
+            "offset_y": 0,
+            "scale_x": 1,
+            "scale_y": 1
+        },
+        "toggle_override_rule": 0
+    },
+    "weaponWheel": {
+        "default_hide": false,
+        "toggle_override_rule": 0,
+        "positioning": {
+            "offset_x": 0,
+            "offset_y": 0,
+            "scale_x": 2,
+            "scale_y": 2
+        }
+    }
+}
