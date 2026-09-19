@@ -31,6 +31,15 @@ jobs:
       - name: Apply recovered V16 and targeted V17 patch
         run: git -C reframework-source apply ../source/pragmata-vr-fixes.patch
 
+      - name: Handle hyphens in upstream version tags
+        shell: pwsh
+        run: |
+          $path = 'reframework-source/MakeCommitHash.bat'
+          $script = Get-Content $path -Raw
+          $script = $script.Replace('SET REF_TAG_LONG=%%a', 'SET REF_TAG_LONG=%%c')
+          $script = $script.Replace('SET REF_COMMITS_PAST_TAG=%%b', 'FOR /F "tokens=*" %%n IN (''git rev-list --count "%REF_TAG%..HEAD"'') DO (SET REF_COMMITS_PAST_TAG=%%n)')
+          Set-Content $path $script -Encoding ascii
+
       - name: Configure
         run: cmake -S reframework-source -B reframework-source/build -G "Visual Studio 17 2022" -A x64 -DCMAKE_BUILD_TYPE=Release -DDEVELOPER_MODE=ON "-DCMAKE_POLICY_VERSION_MINIMUM=3.5"
 
