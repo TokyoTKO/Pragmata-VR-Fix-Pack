@@ -1,0 +1,1234 @@
+diff --git a/src/mods/FaultyFileDetector.cpp b/src/mods/FaultyFileDetector.cpp
+index 8571a1c..864a473 100644
+--- a/src/mods/FaultyFileDetector.cpp
++++ b/src/mods/FaultyFileDetector.cpp
+@@ -90,6 +90,14 @@ std::optional<std::string> FaultyFileDetector::on_initialize() {
+ }
+ 
+ void FaultyFileDetector::initialize_impl() {
++#if defined(PRAGMATA)
++    // The tagged Pragmata source build crashes during this early scanner on the
++    // current game executable. This diagnostic subsystem is not required for VR.
++    m_initialized = true;
++    spdlog::info("[FaultyFileDetector]: Disabled for Pragmata experimental VR build");
++    return;
++#endif
++
+     if (m_initialized) {
+         return;
+     }
+diff --git a/src/mods/VR.cpp b/src/mods/VR.cpp
+index 181c515..ffb89c3 100644
+--- a/src/mods/VR.cpp
++++ b/src/mods/VR.cpp
+@@ -63,6 +63,14 @@
+ #include "VR.hpp"
+ #include <MinHook.h>
+ 
++#if defined(PRAGMATA)
++namespace pragmata_resolve_capture {
++    void note_costume_draw(uint64_t frame);
++    void note_firmware_draw(uint64_t frame);
++    void note_main_menu_draw(uint64_t frame);
++}
++#endif
++
+ bool inside_on_end = false;
+ uint32_t actual_frame_count = 0;
+ 
+@@ -298,11 +306,25 @@ void VR::on_camera_get_projection_matrix(REManagedObject* camera, Matrix4x4f* re
+     }
+ }
+ 
++#if defined(PRAGMATA)
++// Diagnostic correlation only; zero means outside a tracked panel's draw callback.
++static thread_local int g_pragmata_diagnostic_panel = 0;
++#endif
++
+ Matrix4x4f* VR::gui_camera_get_projection_matrix_hook(REManagedObject* camera, Matrix4x4f* result) {
+     auto original_func = g_projection_matrix_hook2->get_original<decltype(VR::gui_camera_get_projection_matrix_hook)>();
+ 
+     auto& vr = VR::get();
+ 
++#if defined(PRAGMATA)
++    static thread_local std::unordered_map<int, uint32_t> projection_samples;
++    auto& sample = projection_samples[g_pragmata_diagnostic_panel];
++    if (sample < 4) {
++        spdlog::info("[PragmataGUICamera] callback panel={} sample={} disabled={} camera=0x{:x}",
++            g_pragmata_diagnostic_panel, sample++, vr->m_disable_gui_camera_projection_matrix_override, (uintptr_t)camera);
++    }
++#endif
++
+     if (result == nullptr || !g_framework->is_ready() || !vr->is_hmd_active() || vr->m_disable_gui_camera_projection_matrix_override) {
+         return original_func(camera, result);
+     }
+@@ -1783,9 +1805,42 @@ std::optional<std::string> VR::hijack_camera() {
+         
+         // Pattern scan for the native function call
+         auto ref = utility::scan((uintptr_t)func, 0x100, "49 8B C8 E8");
++        size_t call_displacement_offset = 4;
++
++#if defined(PRAGMATA)
++        spdlog::info("[PragmataGUICamera] pattern_found={} primary_method=0x{:x} wrapper=0x{:x}",
++            ref.has_value(), get_projection_matrix, (uintptr_t)func);
++        if (!ref) {
++            // Same 256-byte region already inspected by the existing scanner.
++            std::string bytes;
++            const auto code = reinterpret_cast<const uint8_t*>(func);
++            for (size_t i = 0; i < 0x100; ++i) {
++                bytes += fmt::format("{:02x}", code[i]);
++            }
++            spdlog::info("[PragmataGUICamera] wrapper_bytes={}", bytes);
++
++            // Captured Pragmata wrapper: save output pointer, move camera from
++            // R8 to RCX, move output to RDX, then call the native implementation.
++            // Match the complete wrapper at its entry; never select a nearby function.
++            const auto fallback = utility::scan((uintptr_t)func, 0x20,
++                "56 48 83 EC 20 48 89 CE 4C 89 C1 48 89 F2 E8 ? ? ? ? 48 89 F0 48 83 C4 20 5E C3");
++            if (fallback && *fallback == (uintptr_t)func) {
++                ref = fallback;
++                call_displacement_offset = 15;
++                spdlog::info("[PragmataGUICamera] fallback_wrapper_matched=true");
++            } else {
++                spdlog::warn("[PragmataGUICamera] fallback_wrapper_matched=false; leaving GUI projection unhooked");
++            }
++        }
++#endif
+ 
+         if (ref) {
+-            auto native_func = utility::calculate_absolute(*ref + 4);
++            auto native_func = utility::calculate_absolute(*ref + call_displacement_offset);
++
++#if defined(PRAGMATA)
++            spdlog::info("[PragmataGUICamera] native_target=0x{:x} shared_with_primary={}",
++                native_func, native_func == get_projection_matrix);
++#endif
+ 
+             if (native_func != get_projection_matrix) {
+                 // Hook the native function
+@@ -1793,6 +1848,10 @@ std::optional<std::string> VR::hijack_camera() {
+ 
+                 if (g_projection_matrix_hook2->create()) {
+                     spdlog::info("Hooked via.gui.GUICamera.get_ProjectionMatrix");
++                } else {
++#if defined(PRAGMATA)
++                    spdlog::error("[PragmataGUICamera] hook_creation_failed");
++#endif
+                 }
+             } else {
+                 spdlog::info("Did not hook via.gui.GUICamera.get_ProjectionMatrix, same as via.Camera.get_ProjectionMatrix");
+@@ -2596,10 +2655,9 @@ void VR::disable_bad_effects() {
+ 
+     if (get_antialiasing_method != nullptr && set_antialiasing_method != nullptr) {
+ 
+-        //if (is_using_afw_foveated()) {
+-        //    set_antialiasing_method->call<void*>(context, render_config, via::render::RenderConfig::AntiAliasingType::TAA);
+-        //} else 
+-        if (m_force_aa_settings->value()) {
++        if (is_using_afw_foveated()) {
++            set_antialiasing_method->call<void*>(context, render_config, via::render::RenderConfig::AntiAliasingType::TAA);
++        } else if (m_force_aa_settings->value()) {
+             const auto antialiasing = get_antialiasing_method->call<via::render::RenderConfig::AntiAliasingType>(context, render_config);
+ 
+             // Disable TAA
+@@ -3052,6 +3110,8 @@ void VR::on_present() {
+     if (GetAsyncKeyState(VK_NUMPAD3) == 0 && btn3 == true) {
+         btn3 = false;
+         mDebug3 = !mDebug3;
++        mDebug2 = false;
++        mDebug1 = false;
+     }
+     static bool btn4 = false;
+     if (GetAsyncKeyState(VK_NUMPAD4) < 0 && btn4 == false) {
+@@ -3302,6 +3362,7 @@ struct GUIRestoreData {
+     via::gui::ViewType view_type{ via::gui::ViewType::Screen };
+     bool overlay{false};
+     bool detonemap{true};
++    std::optional<Matrix4x4f> original_world_transform{};
+ };
+ 
+ thread_local std::vector<std::unique_ptr<GUIRestoreData>> g_elements_to_reset{};
+@@ -3323,6 +3384,50 @@ bool VR::on_pre_gui_draw_element(REComponent* gui_element, void* primitive_conte
+         const auto name = utility::re_game_object::get_name(game_object);
+         const auto name_hash = utility::hash(name);
+ 
++#if defined(PRAGMATA)
++        if (name_hash == "ui5146Gui"_fnv && game_object->shouldDraw) {
++            pragmata_resolve_capture::note_costume_draw(m_render_frame_count);
++        }
++        if (name_hash == "ui1200Gui"_fnv && game_object->shouldDraw) {
++            pragmata_resolve_capture::note_main_menu_draw(m_render_frame_count);
++        }
++        // V17: reuse the accepted Firmware Updater history treatment for both
++        // Cabin Stamp Club interfaces and the Bot Database. Only actual draws
++        // refresh the existing heartbeat; its one-frame expiry is unchanged.
++        if ((name_hash == "ui5120Gui"_fnv || name_hash == "ui5131Gui"_fnv ||
++             name_hash == "ui5136Gui"_fnv || name_hash == "ui5145Gui"_fnv) &&
++            game_object->shouldDraw) {
++            pragmata_resolve_capture::note_firmware_draw(m_render_frame_count);
++        }
++#endif
++
++        // Log each stage once per hacking panel on this render thread.
++#if defined(PRAGMATA)
++        g_pragmata_diagnostic_panel = name_hash == "ui3400Gui"_fnv ? 3400 :
++            (name_hash == "ui3510Gui"_fnv ? 3510 : 0);
++#endif
++        const auto log_pragmata_gate = [&](const char* stage) {
++#if defined(PRAGMATA)
++            if (name_hash == "ui3400Gui"_fnv || name_hash == "ui3500Gui"_fnv ||
++                name_hash == "ui3510Gui"_fnv) {
++                static thread_local std::unordered_map<size_t, std::unordered_set<std::string>> stages;
++                if (stages[name_hash].insert(stage).second) {
++                    spdlog::info("[PragmataVRUIGate] name='{}' stage={}", name, stage);
++                }
++            }
++#endif
++        };
++        log_pragmata_gate("native-entry");
++
++#if defined(PRAGMATA)
++        // Diagnostic: log native GameObject names once.
++        static std::unordered_set<size_t> pragmata_logged_gui_names{};
++        if (!pragmata_logged_gui_names.contains(name_hash)) {
++            pragmata_logged_gui_names.insert(name_hash);
++            spdlog::info("[PragmataVRUI] GameObject name='{}' hash=0x{:X}", name, name_hash);
++        }
++#endif
++
+         switch (name_hash) {
+         // Don't mess with this, causes weird black boxes on the sides of the screen
+         case "GUI_PillarBox"_fnv:
+@@ -3354,7 +3459,7 @@ bool VR::on_pre_gui_draw_element(REComponent* gui_element, void* primitive_conte
+         case "Gui_ui0440"_fnv: // Black bars in cutscenes
+             game_object->shouldDraw = false;
+             return false;
+-        case "GuiTimelineEvent_ui1640_00"_fnv:
++        case "GuiTimelineEvent_ui1640_00"_fnv: // monitor in first cutscene
+         case "GuiPlayerGimmick0040"_fnv:  //blood analyzer
+             return true;
+ #endif
+@@ -3408,10 +3513,27 @@ bool VR::on_pre_gui_draw_element(REComponent* gui_element, void* primitive_conte
+ 
+         auto view = sdk::call_object_func<REComponent*>(gui_element, "get_View", context, gui_element);
+ 
++        if (view == nullptr) { log_pragmata_gate("skip-null-view"); }
+         if (view != nullptr) {
+             const auto current_view_type = sdk::call_object_func<uint32_t>(view, "get_ViewType", context, view);
+ 
+-            if (current_view_type == (uint32_t)via::gui::ViewType::Screen) {
++            log_pragmata_gate(current_view_type == (uint32_t)via::gui::ViewType::Screen
++                ? "incoming-screen" : (current_view_type == (uint32_t)via::gui::ViewType::World
++                    ? "incoming-world" : "skip-other-view-type"));
++            bool pragmata_hacking_world_view = false;
++#if defined(PRAGMATA)
++            pragmata_hacking_world_view =
++                current_view_type == (uint32_t)via::gui::ViewType::World &&
++                (name_hash == "ui3400Gui"_fnv || name_hash == "ui3510Gui"_fnv);
++#endif
++            if (pragmata_hacking_world_view) {
++                // Test the repaired GUI projection hook with the game's original
++                // World-mode hacking-panel transforms, without VR HUD placement.
++                log_pragmata_gate("preserve-original-world-hacking-placement");
++                return true;
++            }
++            if (current_view_type == (uint32_t)via::gui::ViewType::Screen ||
++                pragmata_hacking_world_view) {
+                 static sdk::RETypeDefinition* via_render_mesh_typedef = nullptr;
+ 
+                 if (via_render_mesh_typedef == nullptr) {
+@@ -3419,6 +3541,7 @@ bool VR::on_pre_gui_draw_element(REComponent* gui_element, void* primitive_conte
+ 
+                     // wait
+                     if (via_render_mesh_typedef == nullptr) {
++                        log_pragmata_gate("skip-mesh-type-unavailable");
+                         return true;
+                     }
+                 }
+@@ -3427,6 +3550,7 @@ bool VR::on_pre_gui_draw_element(REComponent* gui_element, void* primitive_conte
+                 // because it might be something physical in the game world
+                 // that the player can interact with
+                 if (utility::re_component::find(game_object->transform, via_render_mesh_typedef->get_type()) != nullptr) {
++                    log_pragmata_gate("skip-mesh-component");
+                     return true;
+                 }
+ 
+@@ -3440,6 +3564,9 @@ bool VR::on_pre_gui_draw_element(REComponent* gui_element, void* primitive_conte
+                 auto& restore_data = g_elements_to_reset.emplace_back(std::make_unique<GUIRestoreData>());
+                 auto original_game_object_pos = sdk::get_transform_position(game_object->transform);
+ 
++                if (pragmata_hacking_world_view) {
++                    restore_data->original_world_transform = game_object->transform->worldTransform;
++                }
+                 restore_data->element = gui_element;
+                 restore_data->view = view;
+                 restore_data->original_position = original_game_object_pos;
+@@ -3469,11 +3596,14 @@ bool VR::on_pre_gui_draw_element(REComponent* gui_element, void* primitive_conte
+                 }*/
+ 
+                 auto camera = sdk::get_primary_camera();
++                log_pragmata_gate(camera == nullptr ? "skip-null-camera" : "camera-present");
+ 
+                 // Set the gui element's position to be in front of the camera
+                 if (camera != nullptr) {
+                     auto camera_object = utility::re_component::get_game_object(camera);
+ 
++                    log_pragmata_gate(camera_object == nullptr || camera_object->transform == nullptr
++                        ? "skip-camera-object-or-transform" : "camera-transform-present");
+                     if (camera_object != nullptr && camera_object->transform != nullptr) {
+                         auto& gui_matrix = game_object->transform->worldTransform;
+                         auto child = sdk::call_object_func<REManagedObject*>(view, "get_Child", context, view);
+@@ -3571,7 +3701,24 @@ bool VR::on_pre_gui_draw_element(REComponent* gui_element, void* primitive_conte
+ 
+                         auto camera_transform = camera_object->transform;
+ 
+-                        const auto& camera_matrix = m_original_camera_matrix;
++                        // V15 experiment: ui2010 subtitles follow the rendered HMD camera.
++                        // Retain normal UI scale/distance and all AFW history treatment.
++                        // Unlike the night-vision face-glue path, do not force distance 5
++                        // or omit the normal UI scale.
++                        bool pragmata_head_subtitle = false;
++#if defined(PRAGMATA)
++                        pragmata_head_subtitle = name_hash == "ui2010Gui"_fnv &&
++                            is_using_afw() && !is_using_afw_foveated();
++                        if (pragmata_head_subtitle) {
++                            static unsigned int samples = 0;
++                            if (samples++ < 4) {
++                                spdlog::info("[PragmataSubtitleV15] head-anchored ui2010; scale={} distance={}; AFW history unchanged",
++                                    ui_scale, m_ui_distance_option->value());
++                            }
++                        }
++#endif
++                        const auto& camera_matrix = pragmata_head_subtitle
++                            ? m_render_camera_matrix : m_original_camera_matrix;
+                         auto camera_position = camera_matrix[3];
+ 
+                         glm::quat wanted_rotation{};
+@@ -3628,6 +3775,11 @@ bool VR::on_pre_gui_draw_element(REComponent* gui_element, void* primitive_conte
+                             ui_scale = 1.0f;
+                             break;
+                         default:
++                            if (!seenGuiNames.contains(name_hash)) {
++                                log_pragmata_gate("skip-first-encounter");
++                                seenGuiNames[name_hash] = 1;
++                                return true;
++                            }
+                             break;
+                         }
+ 
+@@ -3655,7 +3807,7 @@ bool VR::on_pre_gui_draw_element(REComponent* gui_element, void* primitive_conte
+                                 0, 0, 0, 1
+                             };
+ 
+-                            if (m_decoupled_pitch->value()) {
++                            if (m_decoupled_pitch->value() && !pragmata_head_subtitle) {
+                                 bool is_exception = false;
+ 
+                                 switch (name_hash) {
+@@ -3673,9 +3825,12 @@ bool VR::on_pre_gui_draw_element(REComponent* gui_element, void* primitive_conte
+                                 }
+                             }
+ 
+-                            wanted_rotation = gui_rotation_offset * wanted_rotation;
++                            if (!pragmata_head_subtitle) {
++                                wanted_rotation = gui_rotation_offset * wanted_rotation;
++                            }
+                         }
+ 
++                        log_pragmata_gate("reached-camera-correction");
+                         const auto wanted_rotation_mat = Matrix4x4f{wanted_rotation};
+ 
+ #if defined(RE9)
+@@ -3686,9 +3841,42 @@ bool VR::on_pre_gui_draw_element(REComponent* gui_element, void* primitive_conte
+                         }
+  #endif
+ 
++#if defined(PRAGMATA)
++                        // Pragmata's hacking panels retain a mono camera position in VR,
++                        // which sends each eye to a different apparent screen location.
++                        // Use the active eye camera position so both eyes converge.
++                        if (name_hash == "ui3400Gui"_fnv ||
++                            name_hash == "ui3500Gui"_fnv ||
++                            name_hash == "ui3510Gui"_fnv) {
++                            const auto eye_transform = get_current_eye_transform(true);
++                            const auto eye_camera_matrix = m_original_camera_matrix * eye_transform;
++
++                            static std::unordered_map<size_t, uint32_t> pragmata_eye_log_counts{};
++                            auto& eye_log_count = pragmata_eye_log_counts[name_hash];
++                            if (eye_log_count < 16) {
++                                const auto original_pos = m_original_camera_matrix[3];
++                                const auto eye_pos = eye_transform[3];
++                                const auto combined_pos = eye_camera_matrix[3];
++                                const auto render_pos = m_render_camera_matrix[3];
++                                spdlog::info(
++                                    "[PragmataVRUIEye] name='{}' sample={} original=({:.6f},{:.6f},{:.6f}) eye=({:.6f},{:.6f},{:.6f}) combined=({:.6f},{:.6f},{:.6f}) render=({:.6f},{:.6f},{:.6f})",
++                                    name, eye_log_count,
++                                    original_pos.x, original_pos.y, original_pos.z,
++                                    eye_pos.x, eye_pos.y, eye_pos.z,
++                                    combined_pos.x, combined_pos.y, combined_pos.z,
++                                    render_pos.x, render_pos.y, render_pos.z
++                                );
++                                ++eye_log_count;
++                            }
++
++                            camera_position = eye_camera_matrix[3];
++                        }
++#endif
++
+                         gui_matrix = wanted_rotation_mat;
+                         gui_matrix[3] = camera_position + (wanted_rotation_mat[2] * ui_distance) + (wanted_rotation_mat[0] * right_world_adjust);
+                         gui_matrix[3].w = 1.0f;
++                        log_pragmata_gate("placement-matrix-written");
+ 
+                         // Scales the GUI so it's not massive.
+                         if (!wants_face_glue) {
+@@ -3842,6 +4030,9 @@ bool VR::on_pre_gui_draw_element(REComponent* gui_element, void* primitive_conte
+ }
+ 
+ void VR::on_gui_draw_element(REComponent* gui_element, void* primitive_context) {
++#if defined(PRAGMATA)
++    g_pragmata_diagnostic_panel = 0;
++#endif
+     
+ 
+     //spdlog::info("VR: on_gui_draw_element");
+@@ -3850,7 +4041,7 @@ void VR::on_gui_draw_element(REComponent* gui_element, void* primitive_context)
+ 
+     // Restore elements back to original states
+     for (auto& data : g_elements_to_reset) {
+-        sdk::call_object_func<void*>(data->view, "set_ViewType", context, data->view, (uint32_t)via::gui::ViewType::Screen);
++        sdk::call_object_func<void*>(data->view, "set_ViewType", context, data->view, (uint32_t)data->view_type);
+         sdk::call_object_func<void*>(data->view, "set_Overlay", context, data->view, data->overlay);
+         sdk::call_object_func<void*>(data->view, "set_Detonemap", context, data->view, data->detonemap);
+         
+@@ -3860,7 +4051,11 @@ void VR::on_gui_draw_element(REComponent* gui_element, void* primitive_context)
+             //sdk::set_transform_position(game_object->transform, data->original_position);
+ 
+             auto& gui_matrix = game_object->transform->worldTransform;
+-            gui_matrix[3] = data->original_position;
++            if (data->original_world_transform) {
++                gui_matrix = *data->original_world_transform;
++            } else {
++                gui_matrix[3] = data->original_position;
++            }
+         }
+     }
+ 
+diff --git a/src/mods/VR.hpp b/src/mods/VR.hpp
+index 84a5202..a17c07f 100644
+--- a/src/mods/VR.hpp
++++ b/src/mods/VR.hpp
+@@ -70,6 +70,8 @@ public:
+     std::array<Matrix4x4f, 2> oldViewMatrix{};
+     std::array<Matrix4x4f, 2> oldFoveatedProjectionMatrix{};
+ 
++    std::unordered_map<size_t, int> seenGuiNames;
++
+     int last_update_camera_data_frame_count = 0;
+     void update_camera_data(int frame_count);
+     void get_camera_data();
+diff --git a/src/mods/vr/D3D12Component.cpp b/src/mods/vr/D3D12Component.cpp
+index a02d078..23651e9 100644
+--- a/src/mods/vr/D3D12Component.cpp
++++ b/src/mods/vr/D3D12Component.cpp
+@@ -1,4 +1,15 @@
+ #include <openvr.h>
++#include <chrono>
++#include <atomic>
++#include <limits>
++#include <fstream>
++#include <json.hpp>
++#include <MinHook.h>
++#include "sdk/RETypeDB.hpp"
++#include <filesystem>
++#include <stdexcept>
++#include <string>
++#include <../../directxtk12-src/Inc/ScreenGrab.h>
+ #include <utility/ScopeGuard.hpp>
+ 
+ #include "../VR.hpp"
+@@ -9,8 +20,482 @@
+ 
+ #include "D3D12Component.hpp"
+ 
++#if defined(PRAGMATA)
++namespace pragmata_resolve_capture {
++using Microsoft::WRL::ComPtr;
++struct TrackedSource {
++    TextureDesc desc{};
++    D3D12_RESOURCE_STATES state{};
++    bool known{};
++};
++struct Context {
++    bool diagnostic{};
++    bool fix_history{};
++    bool history_ready{};
++    UINT64 current_ui{}, previous_ui{};
++
++    ID3D12Device* device{};
++    uintptr_t object{};
++    ID3D12PipelineState* scatter{};
++    UINT64 roots[8]{};
++    UINT64 banks[4]{};
++    TrackedSource sources[4]{};
++    ComPtr<ID3D12Resource> scatter_source[2], scatter_ui[2];
++    unsigned int scatter_count{};
++
++    ID3D12GraphicsCommandList* cmd{};
++    ID3D12PipelineState* target{};
++    ID3D12PipelineState* current{};
++    ID3D12Resource* output[2]{};
++    ComPtr<ID3D12Resource> before[2], after[2];
++    D3D12_RESOURCE_STATES state[2]{};
++    bool known[2]{};
++    bool captured{};
++    unsigned int capture_mask{};
++    unsigned int matches{};
++};
++static thread_local Context* active = nullptr;
++using DispatchFn = void(STDMETHODCALLTYPE*)(ID3D12GraphicsCommandList*, UINT, UINT, UINT);
++using PipelineFn = void(STDMETHODCALLTYPE*)(ID3D12GraphicsCommandList*, ID3D12PipelineState*);
++using BarrierFn = void(STDMETHODCALLTYPE*)(ID3D12GraphicsCommandList*, UINT, const D3D12_RESOURCE_BARRIER*);
++static DispatchFn original_dispatch{};
++static PipelineFn original_pipeline{};
++static BarrierFn original_barrier{};
++using TableFn = void(STDMETHODCALLTYPE*)(ID3D12GraphicsCommandList*, UINT, D3D12_GPU_DESCRIPTOR_HANDLE);
++static TableFn original_table{};
++static void STDMETHODCALLTYPE table_hook(ID3D12GraphicsCommandList* cmd, UINT slot, D3D12_GPU_DESCRIPTOR_HANDLE handle) {
++    auto* c = active;
++    if (c && c->cmd == cmd && slot < 8) c->roots[slot] = handle.ptr;
++    original_table(cmd, slot, handle);
++    if (c && c->fix_history && c->cmd == cmd && slot == 7) {
++        bool history = handle.ptr == c->banks[2] || handle.ptr == c->banks[3];
++        const UINT64 ui = history ? c->previous_ui : c->current_ui;
++        original_table(cmd, 1, D3D12_GPU_DESCRIPTOR_HANDLE{ui});
++        c->roots[1] = ui;
++    }
++}
++using ConstantsFn = void(__fastcall*)(void*, int, int, bool);
++static ConstantsFn original_constants{};
++static void __fastcall constants_hook(void* object, int source, int destination, bool history) {
++    auto* c = active;
++    if (!c || !c->fix_history || reinterpret_cast<uintptr_t>(object) != c->object || !history ||
++        destination < 2 || destination > 3) {
++        original_constants(object, source, destination, history);
++        return;
++    }
++    auto* flag = reinterpret_cast<unsigned char*>(reinterpret_cast<uintptr_t>(object) + 0x19a);
++    const auto saved = *flag;
++    *flag = 1;
++    original_constants(object, source, destination, history);
++    *flag = saved;
++    if (c->diagnostic) spdlog::info("[PragmataHistoryV10] enabled matching-history UI protection bank={}", destination);
++}
++static uintptr_t verified_base{};
++static void STDMETHODCALLTYPE pipeline_hook(ID3D12GraphicsCommandList* cmd, ID3D12PipelineState* pso) {
++    if (active && active->cmd == cmd) active->current = pso;
++    original_pipeline(cmd, pso);
++}
++static void STDMETHODCALLTYPE barrier_hook(ID3D12GraphicsCommandList* cmd, UINT count, const D3D12_RESOURCE_BARRIER* barriers) {
++    if (active && active->cmd == cmd) {
++        for (UINT j = 0; j < count; ++j) {
++            const auto& b = barriers[j];
++            if (b.Type != D3D12_RESOURCE_BARRIER_TYPE_TRANSITION) continue;
++            for (auto& src : active->sources) {
++                if (!src.desc.pTexture || b.Transition.pResource != src.desc.pTexture) continue;
++                src.known = b.Flags == D3D12_RESOURCE_BARRIER_FLAG_NONE &&
++                    (b.Transition.Subresource == D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES || b.Transition.Subresource == 0);
++                if (src.known) src.state = b.Transition.StateAfter;
++            }
++            for (int i = 0; i < 2; ++i) {
++                if (b.Transition.pResource != active->output[i]) continue;
++                if (b.Flags != D3D12_RESOURCE_BARRIER_FLAG_NONE ||
++                    (b.Transition.Subresource != D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES && b.Transition.Subresource != 0)) {
++                    active->known[i] = false;
++                } else {
++                    active->state[i] = b.Transition.StateAfter;
++                    active->known[i] = true;
++                }
++            }
++        }
++    }
++    original_barrier(cmd, count, barriers);
++}
++static void copy_outputs(Context& c, ComPtr<ID3D12Resource>* destinations, unsigned int mask) {
++    for (int i = 0; i < 2; ++i) {
++        if (!(mask & (1u << i))) continue;
++        const auto state = c.state[i];
++        // A state transition orders prior UAV writes before the copy.
++        // If already COPY_SOURCE, an explicit UAV barrier is unnecessary.
++        if (state != D3D12_RESOURCE_STATE_COPY_SOURCE) {
++            auto b = CD3DX12_RESOURCE_BARRIER::Transition(c.output[i], state, D3D12_RESOURCE_STATE_COPY_SOURCE);
++            original_barrier(c.cmd, 1, &b);
++        }
++        c.cmd->CopyResource(destinations[i].Get(), c.output[i]);
++        if (state != D3D12_RESOURCE_STATE_COPY_SOURCE) {
++            auto b = CD3DX12_RESOURCE_BARRIER::Transition(c.output[i], D3D12_RESOURCE_STATE_COPY_SOURCE, state);
++            original_barrier(c.cmd, 1, &b);
++        }
++    }
++}
++static bool copy_source(Context& c, UINT64 handle, ComPtr<ID3D12Resource>& destination, const char* label, unsigned int pass) {
++    TrackedSource* found = nullptr;
++    for (auto& src : c.sources) {
++        if (src.desc.pTexture && src.desc.shaderResourceViewHandle.ptr == handle) {
++            if (found && found->desc.pTexture != src.desc.pTexture) return false;
++            found = &src;
++        }
++    }
++    if (!found || !found->known) {
++        spdlog::warn("[PragmataHistoryV10] pass={} {} handle={} resource/state unknown; skipped", pass, label, handle);
++        return false;
++    }
++    auto desc = found->desc.pTexture->GetDesc();
++    if (desc.Dimension != D3D12_RESOURCE_DIMENSION_TEXTURE2D || desc.MipLevels != 1 ||
++        desc.DepthOrArraySize != 1 || desc.SampleDesc.Count != 1) return false;
++    desc.Flags = D3D12_RESOURCE_FLAG_NONE;
++    auto heap = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
++    if (FAILED(c.device->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &desc,
++        D3D12_RESOURCE_STATE_COPY_DEST, nullptr, IID_PPV_ARGS(destination.GetAddressOf())))) return false;
++    const auto state = found->state;
++    if (state != D3D12_RESOURCE_STATE_COPY_SOURCE) {
++        auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(found->desc.pTexture, state, D3D12_RESOURCE_STATE_COPY_SOURCE);
++        original_barrier(c.cmd, 1, &barrier);
++    }
++    c.cmd->CopyResource(destination.Get(), found->desc.pTexture);
++    if (state != D3D12_RESOURCE_STATE_COPY_SOURCE) {
++        auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(found->desc.pTexture, D3D12_RESOURCE_STATE_COPY_SOURCE, state);
++        original_barrier(c.cmd, 1, &barrier);
++    }
++    spdlog::info("[PragmataHistoryV10] pass={} {} resource={} handle={} state={} copied",
++        pass, label, static_cast<void*>(found->desc.pTexture), handle, static_cast<unsigned int>(state));
++    return true;
++}
++static void capture_scatter(Context& c) {
++    const auto pass = c.scatter_count++;
++    if (pass >= 2) return;
++    int bank = -1;
++    for (int i = 0; i < 4; ++i) if (c.banks[i] && c.banks[i] == c.roots[7]) bank = i;
++    int flag = -1;
++    SIZE_T count = 0;
++    const bool valid_flag = bank >= 0 && ReadProcessMemory(GetCurrentProcess(),
++        reinterpret_cast<const void*>(c.object + 0xf6c + static_cast<uintptr_t>(bank) * 0x978),
++        &flag, sizeof(flag), &count) && count == sizeof(flag);
++    spdlog::info("[PragmataHistoryV10] scatter={} root0={} root1={} root7={} bank={} uiProtection={} flagRead={}",
++        pass, c.roots[0], c.roots[1], c.roots[7], bank, flag, valid_flag);
++    copy_source(c, c.roots[0], c.scatter_source[pass], "source", pass);
++    copy_source(c, c.roots[1], c.scatter_ui[pass], "ui", pass);
++}
++static void STDMETHODCALLTYPE dispatch_hook(ID3D12GraphicsCommandList* cmd, UINT x, UINT y, UINT z) {
++    auto* c = active;
++    if (c && c->diagnostic && c->cmd == cmd && c->current == c->scatter) capture_scatter(*c);
++    const bool target = c && c->diagnostic && c->cmd == cmd && c->current == c->target;
++    if (target) ++c->matches;
++    const unsigned int mask = target && !c->captured ?
++        (c->known[0] ? 1u : 0u) | (c->known[1] ? 2u : 0u) : 0u;
++    const bool capture = mask != 0;
++    if (target) spdlog::info("[PragmataHistoryV10] at dispatch known={},{} states={},{} mask={}",
++        c->known[0], c->known[1], static_cast<unsigned int>(c->state[0]), static_cast<unsigned int>(c->state[1]), mask);
++    if (capture) copy_outputs(*c, c->before, mask);
++    original_dispatch(cmd, x, y, z);
++    if (capture) {
++        copy_outputs(*c, c->after, mask);
++        c->capture_mask = mask;
++        c->captured = true;
++        spdlog::info("[PragmataHistoryV10] captured resolve dispatch={}x{}x{} states={},{}", x, y, z,
++            static_cast<unsigned int>(c->state[0]), static_cast<unsigned int>(c->state[1]));
++    }
++}
++
++static bool install(ID3D12GraphicsCommandList* cmd) {
++    static bool attempted = false;
++    static bool installed = false;
++    if (attempted) return installed;
++    attempted = true;
++    auto** vtable = *reinterpret_cast<void***>(cmd);
++    void* targets[]{vtable[14], vtable[25], vtable[26], vtable[31], reinterpret_cast<void*>(verified_base + 0x19e00)};
++    void* hooks[]{reinterpret_cast<void*>(&dispatch_hook), reinterpret_cast<void*>(&pipeline_hook), reinterpret_cast<void*>(&barrier_hook), reinterpret_cast<void*>(&table_hook), reinterpret_cast<void*>(&constants_hook)};
++    void** originals[]{reinterpret_cast<void**>(&original_dispatch), reinterpret_cast<void**>(&original_pipeline), reinterpret_cast<void**>(&original_barrier), reinterpret_cast<void**>(&original_table), reinterpret_cast<void**>(&original_constants)};
++    unsigned int created = 0;
++    for (; created < 5; ++created) {
++        const auto result = MH_CreateHook(targets[created], hooks[created], originals[created]);
++        if (result != MH_OK) {
++            spdlog::error("[PragmataHistoryV10] hook creation failed index={} status={}; stage capture disabled", created, static_cast<int>(result));
++            for (unsigned int i = 0; i < created; ++i) MH_RemoveHook(targets[i]);
++            return false;
++        }
++    }
++    for (unsigned int i = 0; i < 5; ++i) {
++        const auto result = MH_QueueEnableHook(targets[i]);
++        if (result != MH_OK) {
++            for (unsigned int j = 0; j < 5; ++j) MH_RemoveHook(targets[j]);
++            spdlog::error("[PragmataHistoryV10] hook queue failed; stage capture disabled");
++            return false;
++        }
++    }
++    if (MH_ApplyQueued() != MH_OK) {
++        for (unsigned int i = 0; i < 5; ++i) { MH_DisableHook(targets[i]); MH_RemoveHook(targets[i]); }
++        spdlog::error("[PragmataHistoryV10] hook enable failed; stage capture disabled");
++        return false;
++    }
++    installed = true;
++    spdlog::info("[PragmataHistoryV10] command-list hooks installed; history correction active only inside eligible AFW calls");
++    return true;
++}
++static uintptr_t verified_object{};
++static ID3D12PipelineState* resolve_pso() {
++    static HMODULE verified_module = nullptr;
++    static bool attempted = false;
++    if (!attempted) {
++        attempted = true;
++        auto module = GetModuleHandleW(L"PDAFWPlugin.dll");
++        wchar_t path[32768]{};
++        const auto length = module ? GetModuleFileNameW(module, path, 32768) : 0;
++        if (!length || length >= 32768) return nullptr;
++        std::ifstream file(std::filesystem::path(path), std::ios::binary);
++        uint64_t hash = 14695981039346656037ull;
++        size_t size = 0;
++        char ch;
++        while (file.get(ch)) { hash = (hash ^ static_cast<unsigned char>(ch)) * 1099511628211ull; ++size; }
++        // Exact supplied beta6 file fingerprint, plus exported entrypoint validation.
++        if (!file.eof() || size != 534528 || hash != 0x094c5e71fccd8f6bull ||
++            GetProcAddress(module, "EvaluateFrameWarp") != reinterpret_cast<FARPROC>(reinterpret_cast<uintptr_t>(module) + 0x19ab0)) {
++            spdlog::error("[PragmataHistoryV10] plugin fingerprint mismatch; stage capture disabled");
++            return nullptr;
++        }
++        verified_module = module;
++        verified_base = reinterpret_cast<uintptr_t>(module);
++        spdlog::info("[PragmataHistoryV10] beta6 plugin fingerprint verified");
++    }
++    if (!verified_module) return nullptr;
++    uintptr_t object = 0;
++    SIZE_T read = 0;
++    if (!ReadProcessMemory(GetCurrentProcess(), reinterpret_cast<const void*>(reinterpret_cast<uintptr_t>(verified_module) + 0x99cf0), &object, sizeof(object), &read) || read != sizeof(object) || !object) return nullptr;
++    ID3D12PipelineState* pso = nullptr;
++    if (!ReadProcessMemory(GetCurrentProcess(), reinterpret_cast<const void*>(object + 0x5c8), &pso, sizeof(pso), &read) || read != sizeof(pso)) return nullptr;
++    verified_object = object;
++    return pso;
++}
++static bool prepare(Context& c, ID3D12Device* device, ID3D12GraphicsCommandList* cmd, EyeFrameBuffers& buffers, bool diagnostic) {
++    c.diagnostic = diagnostic;
++    c.target = resolve_pso();
++    if (!c.target || !install(cmd)) return false;
++    c.cmd = cmd;
++    c.device = device;
++    c.object = verified_object;
++    SIZE_T read = 0;
++    if (!ReadProcessMemory(GetCurrentProcess(), reinterpret_cast<const void*>(c.object + 0x5c0),
++        &c.scatter, sizeof(c.scatter), &read) || read != sizeof(c.scatter)) c.scatter = nullptr;
++    for (int i = 0; i < 2; ++i) {
++        c.output[i] = buffers.eyeFrameBuffers[i].color.pTexture;
++        if (!c.output[i]) return false;
++        // The plugin supplies each texture's resting state in its API descriptor.
++        // Use that explicit contract until an observed transition updates it.
++        c.state[i] = buffers.eyeFrameBuffers[i].color.initialState;
++        c.known[i] = c.state[i] == D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE;
++        if (c.diagnostic) spdlog::info("[PragmataHistoryV10] eye={} descriptor state={} seeded={}",
++            i, static_cast<unsigned int>(c.state[i]), c.known[i]);
++        if (!c.diagnostic) continue;
++        auto desc = c.output[i]->GetDesc();
++        if (desc.Dimension != D3D12_RESOURCE_DIMENSION_TEXTURE2D || desc.MipLevels != 1 || desc.DepthOrArraySize != 1 || desc.SampleDesc.Count != 1) return false;
++        desc.Flags = D3D12_RESOURCE_FLAG_NONE;
++        const auto heap = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
++        if (FAILED(device->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &desc, D3D12_RESOURCE_STATE_COPY_DEST, nullptr, IID_PPV_ARGS(c.before[i].GetAddressOf()))) ||
++            FAILED(device->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &desc, D3D12_RESOURCE_STATE_COPY_DEST, nullptr, IID_PPV_ARGS(c.after[i].GetAddressOf())))) return false;
++    }
++    return true;
++}
++struct History {
++    TextureDesc mask{};
++    ID3D12Device* device{};
++    uintptr_t object{};
++    uint64_t frame{};
++    int eye{-1};
++    bool valid{};
++    UINT64 width{};
++    UINT height{};
++    DXGI_FORMAT format{};
++};
++static History history_mask;
++// ui5146Gui is the Outfit Storage screen observed in the user's V11 capture.
++// Keep detection tied to rendering; object existence can outlive the menu.
++static std::atomic<uint64_t> costume_draw_frame{std::numeric_limits<uint64_t>::max()};
++void note_costume_draw(uint64_t frame) {
++    costume_draw_frame.store(frame, std::memory_order_relaxed);
++}
++// ui5120Gui contains the Firmware Updater reinforcement list.
++static std::atomic<uint64_t> firmware_draw_frame{std::numeric_limits<uint64_t>::max()};
++void note_firmware_draw(uint64_t frame) {
++    firmware_draw_frame.store(frame, std::memory_order_relaxed);
++}
++
++
++// V16: the title menu is not covered by the in-game pause service.
++// Observe actual draws rather than object lifetime; expire after one render frame.
++static std::atomic<uint64_t> main_menu_draw_frame{std::numeric_limits<uint64_t>::max()};
++void note_main_menu_draw(uint64_t frame) {
++    main_menu_draw_frame.store(frame, std::memory_order_relaxed);
++}
++
++// Use the game's pause service rather than menu names or screen-space rectangles.
++// If the query is unavailable, retain the user-confirmed V10 gameplay behaviour.
++static bool menu_pause_active(uint64_t frame) {
++    const auto last_main_menu_frame = main_menu_draw_frame.load(std::memory_order_relaxed);
++    const bool main_menu = last_main_menu_frame != std::numeric_limits<uint64_t>::max() &&
++        frame >= last_main_menu_frame && frame - last_main_menu_frame <= 1;
++    static int last_main_menu = -1;
++    if (last_main_menu != static_cast<int>(main_menu)) {
++        spdlog::info("[PragmataMainMenuV16] mainMenu={} frame={} lastDraw={}",
++            main_menu, frame, last_main_menu_frame);
++        last_main_menu = static_cast<int>(main_menu);
++    }
++    if (main_menu) return true;
++
++    const auto last_costume_frame = costume_draw_frame.load(std::memory_order_relaxed);
++    const bool costume = last_costume_frame != std::numeric_limits<uint64_t>::max() &&
++        frame >= last_costume_frame && frame - last_costume_frame <= 1;
++    const auto last_firmware_frame = firmware_draw_frame.load(std::memory_order_relaxed);
++    const bool firmware = last_firmware_frame != std::numeric_limits<uint64_t>::max() &&
++        frame >= last_firmware_frame && frame - last_firmware_frame <= 1;
++    if (!g_framework->is_ready()) return false;
++    static sdk::REMethodDefinition* method = nullptr;
++    static bool warned = false;
++    if (!method) {
++        auto* type = sdk::find_type_definition("app.PauseManager");
++        if (type) method = type->get_method("isPaused");
++    }
++    if (!method || method->get_num_params() != 0) {
++        if (!warned) {
++            spdlog::warn("[PragmataMenuV11] pause query unavailable or has parameters; preserving V10");
++            warned = true;
++        }
++        return false;
++    }
++    auto* manager = sdk::get_managed_singleton<::REManagedObject>("app.PauseManager");
++    if (!manager) return false;
++    const bool paused = method->call<bool>(sdk::get_thread_context(), manager);
++    static int last = -1;
++    if (last != static_cast<int>(paused)) {
++        spdlog::info("[PragmataMenuV11] paused={} historyProtection={}", paused, !paused);
++        last = static_cast<int>(paused);
++    }
++    static int last_presentation = -1;
++    const int presentation = (paused ? 1 : 0) | (costume ? 2 : 0) | (firmware ? 4 : 0);
++    if (last_presentation != presentation) {
++        spdlog::info("[PragmataMenuV13] paused={} costume={} firmware={} historyProtection={} frame={}",
++            paused, costume, firmware, !(paused || costume || firmware), frame);
++        last_presentation = presentation;
++    }
++    return paused || costume || firmware;
++}
++
++struct Scope {
++    Context* previous;
++    Context* context;
++    FrameWarpEvaluateParams& params;
++    D3D12RendererAPI* renderer;
++    uint64_t frame;
++    bool eligible{};
++    explicit Scope(Context* c, FrameWarpEvaluateParams& p, D3D12RendererAPI* r, uint64_t f)
++        : previous(active), context(c), params(p), renderer(r), frame(f) {
++        if (c) {
++            static_assert(sizeof(TextureDesc) == 56, "Unexpected plugin descriptor layout");
++            if (p.InEyeFrameBuffer) c->sources[0].desc = p.InEyeFrameBuffer->color;
++            if (p.InUIColorAlpha) c->sources[1].desc = *p.InUIColorAlpha;
++            SIZE_T read = 0;
++            if (!ReadProcessMemory(GetCurrentProcess(), reinterpret_cast<const void*>(c->object + 0x2f8),
++                &c->sources[2].desc, sizeof(TextureDesc), &read) || read != sizeof(TextureDesc)) c->sources[2].desc = {};
++            for (int i = 0; i < 4; ++i) c->banks[i] = r->GetGPUDescriptorHandle(80000 + i).ptr;
++            eligible = static_cast<int>(p.Mode) == 3 && !p.isFoveated && !p.IsHudlessColor &&
++                p.InUIColorAlpha && p.InUIColorAlpha->pTexture && p.InEyeFrameBuffer;
++            if (eligible) {
++                const auto d = p.InUIColorAlpha->pTexture->GetDesc();
++                auto& h = history_mask;
++                eligible = d.Dimension == D3D12_RESOURCE_DIMENSION_TEXTURE2D &&
++                    d.MipLevels == 1 && d.DepthOrArraySize == 1 && d.SampleDesc.Count == 1;
++                if (eligible && (h.device != c->device || h.object != c->object ||
++                    h.width != d.Width || h.height != d.Height || h.format != d.Format || !h.mask.pTexture)) {
++                    // The plugin renderer owns created textures, as with its other TextureDesc allocations.
++                    h = {};
++                    h.device = c->device; h.object = c->object;
++                    h.width = d.Width; h.height = d.Height; h.format = d.Format;
++                    eligible = r->CreateTexture(static_cast<int>(d.Width), static_cast<int>(d.Height),
++                        d.Format, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, h.mask, false);
++                }
++                eligible = eligible && h.mask.pTexture && h.mask.shaderResourceViewHandle.ptr;
++                if (eligible) {
++                    c->history_ready = true;
++                    c->current_ui = p.InUIColorAlpha->shaderResourceViewHandle.ptr;
++                    c->previous_ui = h.mask.shaderResourceViewHandle.ptr;
++                    c->fix_history = h.valid && h.frame + 1 == frame && h.eye != static_cast<int>(p.EyeIndex) &&
++                        c->current_ui && c->previous_ui && !menu_pause_active(frame);
++                    c->sources[3].desc = h.mask;
++                    static bool announced = false;
++                    if (c->fix_history && !announced) {
++                        spdlog::info("[PragmataHistoryV10] matching previous-frame HUD mask correction active");
++                        announced = true;
++                    }
++                }
++            }
++            for (auto& src : c->sources) {
++                src.state = src.desc.initialState;
++                src.known = src.desc.pTexture && (src.state == D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE ||
++                    src.state == D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE || src.state == D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE);
++            }
++            if (c->diagnostic) spdlog::info("[PragmataHistoryV10] frame={} historyCorrection={} eligible={}", frame, c->fix_history, eligible);
++        }
++        active = c;
++    }
++    ~Scope() {
++        active = previous;
++        if (context && eligible && context->history_ready) {
++            // Preserve this UI after all AFW reads, before the caller clears the UI texture.
++            renderer->Copy(context->cmd, history_mask.mask, *params.InUIColorAlpha);
++            history_mask.frame = frame;
++            history_mask.eye = static_cast<int>(params.EyeIndex);
++            history_mask.valid = true;
++        } else {
++            history_mask.valid = false;
++        }
++    }
++};
++
++}
++#endif
++
+ namespace vrmod {
+ vr::EVRCompositorError D3D12Component::on_frame(VR* vr) {
++#if defined(PRAGMATA)
++    // Observation only: no GPU readback, waits, rendering changes or hotkeys.
++    using StartupClock = std::chrono::steady_clock;
++    static const auto startup_begin = StartupClock::now();
++    static auto startup_previous = startup_begin;
++    static auto startup_window = startup_begin;
++    static double startup_sum_ms = 0.0;
++    static double startup_max_ms = 0.0;
++    static unsigned int startup_samples = 0;
++    const auto startup_now = StartupClock::now();
++    const double startup_elapsed = std::chrono::duration<double>(startup_now - startup_begin).count();
++    const double startup_dt = std::chrono::duration<double, std::milli>(startup_now - startup_previous).count();
++    startup_previous = startup_now;
++    const bool startup_active = startup_elapsed < 120.0;
++    bool startup_report = false;
++    if (startup_active) {
++        startup_sum_ms += startup_dt;
++        if (startup_dt > startup_max_ms) startup_max_ms = startup_dt;
++        ++startup_samples;
++        if (std::chrono::duration<double>(startup_now - startup_window).count() >= 0.25) {
++            startup_report = true;
++            spdlog::info("[PragmataStartupV5] t={:.3f} samples={} submitMeanMs={:.3f} submitMaxMs={:.3f} frame={} afw={} uiFix={} foveated={} depth={} reset={}",
++                startup_elapsed, startup_samples, startup_sum_ms / startup_samples, startup_max_ms,
++                vr->m_render_frame_count, vr->is_using_any_afw(), vr->m_enable_ui_fix->value(),
++                vr->is_foveated_rendering(), vr->depthTex[0] != nullptr, m_force_reset);
++            startup_samples = 0;
++            startup_sum_ms = startup_max_ms = 0.0;
++            startup_window = startup_now;
++        }
++    }
++#endif
++
+     if (m_openvr.left_eye_tex[0].texture == nullptr || m_force_reset) {
+         setup();
+     }
+@@ -61,6 +546,59 @@ vr::EVRCompositorError D3D12Component::on_frame(VR* vr) {
+     }
+ 
+     auto runtime = vr->get_runtime();
++#if defined(PRAGMATA)
++    static bool capture_key_down = false;
++    static unsigned int capture_pending = 0;
++    static ULONGLONG capture_requested = 0;
++    static ULONGLONG capture_poll = 0;
++    static bool subtitle_ready = false;
++    static std::string subtitle_request_id;
++    static std::filesystem::path subtitle_data_dir;
++    static std::filesystem::path capture_folder;
++    const bool capture_key_now = (GetAsyncKeyState(VK_F8) & 0x8000) != 0;
++    if (capture_key_now && !capture_key_down && capture_pending == 0) {
++        capture_requested = GetTickCount64();
++        capture_poll = 0;
++        subtitle_ready = false;
++        try {
++            wchar_t exe_path[32768]{};
++            const auto length = GetModuleFileNameW(nullptr, exe_path, 32768);
++            if (!length || length >= 32768) throw std::runtime_error("Cannot resolve game directory");
++            subtitle_data_dir = std::filesystem::path(exe_path).parent_path() / L"reframework" / L"data";
++            std::filesystem::create_directories(subtitle_data_dir);
++            subtitle_request_id = std::to_string(capture_requested) + "-" + std::to_string(GetCurrentProcessId());
++            std::ofstream request_file(subtitle_data_dir / L"pragmata_subtitle_capture_request.json");
++            request_file << nlohmann::json{{"request_id", subtitle_request_id}}.dump();
++            request_file.close();
++            if (!request_file) throw std::runtime_error("Cannot write subtitle capture request");
++            capture_pending = 3;
++            spdlog::info("[PragmataSubtitleCaptureV14] armed; waiting up to 180 seconds for visible subtitle; no AFW parameters changed");
++        } catch (const std::exception& e) {
++            capture_pending = 0;
++            spdlog::error("[PragmataSubtitleCaptureV14] arm failed: {}", e.what());
++        }
++    }
++    capture_key_down = capture_key_now;
++    if (capture_pending && GetTickCount64() - capture_requested > 180000) {
++        capture_pending = 0;
++        spdlog::warn("[PragmataSubtitleCaptureV14] expired; subtitle trigger or paired capture was not received");
++    }
++    if (capture_pending && !subtitle_ready && GetTickCount64() - capture_poll >= 50) {
++        capture_poll = GetTickCount64();
++        try {
++            std::ifstream ready_file(subtitle_data_dir / L"pragmata_subtitle_capture_ready.json");
++            if (ready_file) {
++                const auto marker = nlohmann::json::parse(ready_file, nullptr, false);
++                if (marker.is_object() && marker.value("request_id", std::string{}) == subtitle_request_id) {
++                    subtitle_ready = true;
++                    spdlog::info("[PragmataSubtitleCaptureV14] visible subtitle trigger received; capturing next eligible eye pair");
++                }
++            }
++        } catch (const std::exception&) {
++            // A concurrent Lua write may be incomplete. Try again while armed.
++        }
++    }
++#endif
+ 
+ 
+     const auto frame_count = vr->m_render_frame_count;
+@@ -136,7 +674,68 @@ vr::EVRCompositorError D3D12Component::on_frame(VR* vr) {
+         }
+     }
+ 
++#if defined(PRAGMATA)
++    bool capture_this_frame = false;
++    ComPtr<ID3D12Resource> capture_scene;
++    ComPtr<ID3D12Resource> capture_ui;
++    const unsigned int capture_bit = 1u << static_cast<unsigned int>(nEye);
++    if ((capture_pending & capture_bit) && subtitle_ready &&
++        vr->is_using_any_afw() && !vr->is_foveated_rendering() && vr->depthTex[0] &&
++        vr->uiBufferDesc[0].pTexture) {
++        capture_pending &= ~capture_bit;
++        try {
++            if (capture_pending == (3u & ~capture_bit)) {
++                wchar_t exe_path[32768]{};
++                const auto length = GetModuleFileNameW(nullptr, exe_path, 32768);
++                if (!length || length >= 32768) throw std::runtime_error("Cannot resolve game directory");
++                capture_folder = std::filesystem::path(exe_path).parent_path() /
++                    L"reframework" / L"data" / (L"afw_subtitle_v14_capture_" + std::to_wstring(capture_requested));
++                std::filesystem::create_directories(capture_folder);
++                spdlog::info("[PragmataAFWCaptureV4] folder={}", capture_folder.string());
++            }
++            const auto allocate_snapshot = [&](ID3D12Resource* src, ComPtr<ID3D12Resource>& dst) {
++                auto desc = src->GetDesc();
++                desc.Flags = D3D12_RESOURCE_FLAG_NONE;
++                const auto heap = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
++                return device->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &desc,
++                    D3D12_RESOURCE_STATE_COPY_DEST, nullptr, IID_PPV_ARGS(dst.GetAddressOf()));
++            };
++            const auto scene_hr = allocate_snapshot(texDesc[texIndex].pTexture, capture_scene);
++            const auto ui_hr = allocate_snapshot(vr->uiBufferDesc[0].pTexture, capture_ui);
++            capture_this_frame = SUCCEEDED(scene_hr) && SUCCEEDED(ui_hr);
++            if (!capture_this_frame) {
++                capture_pending = 0;
++                spdlog::error("[PragmataAFWCaptureV4] snapshot allocation failed scene={} ui={}",
++                    static_cast<long>(scene_hr), static_cast<long>(ui_hr));
++            }
++        } catch (const std::exception& e) {
++            capture_pending = 0;
++            spdlog::error("[PragmataAFWCaptureV4] capture failed: {}", e.what());
++        }
++    }
++#endif
++
+     auto cmdList = vr->d3d12Renderer->BeginCommandList(backbuffer_index);
++#if defined(PRAGMATA)
++    pragmata_resolve_capture::Context resolve_capture;
++    const bool resolve_ready = vr->is_using_any_afw() && pragmata_resolve_capture::prepare(resolve_capture, device, cmdList, m_eyeFrameBuffers, capture_this_frame);
++    if (capture_this_frame && !resolve_ready) spdlog::warn("[PragmataHistoryV10] stage capture unavailable; ordinary capture retained");
++#endif
++#if defined(PRAGMATA)
++    if (capture_this_frame) {
++        // GPU snapshots are queued before AFW, with no CPU readback wait between input and output.
++        const auto snapshot = [&](ID3D12Resource* src, D3D12_RESOURCE_STATES state, ID3D12Resource* dst) {
++            auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(src, state, D3D12_RESOURCE_STATE_COPY_SOURCE);
++            cmdList->ResourceBarrier(1, &barrier);
++            cmdList->CopyResource(dst, src);
++            barrier = CD3DX12_RESOURCE_BARRIER::Transition(src, D3D12_RESOURCE_STATE_COPY_SOURCE, state);
++            cmdList->ResourceBarrier(1, &barrier);
++        };
++        snapshot(texDesc[texIndex].pTexture, texDesc[texIndex].initialState, capture_scene.Get());
++        snapshot(vr->uiBufferDesc[0].pTexture, vr->uiBufferDesc[0].initialState, capture_ui.Get());
++    }
++#endif
++
+ 
+     if ((vr->is_using_any_afw()) && m_eyeFrameBuffers.eyeFrameBuffers[0].color.pTexture && vr->depthTex[0]) {
+         static FrameBufferDesc s_CurrentEyeFrameBuffer{};
+@@ -177,7 +776,30 @@ vr::EVRCompositorError D3D12Component::on_frame(VR* vr) {
+                 vr->d3d12Renderer->Sharpen(cmdList, eyeFrameBuffer.color, s_CurrentEyeFrameBuffer.color, vr->get_sharpness());
+                 s_CurrentEyeFrameBuffer.color = eyeFrameBuffer.color;
+             }
+-            EvaluateFrameWarp(params);
++
++#if defined(PRAGMATA)
++            // Emit on state transitions as well as the periodic timing sample.
++            static unsigned int startup_last_state = ~0u;
++            const unsigned int startup_state = (unsigned int)params.Mode |
++                ((unsigned int)params.MotionVectorsType << 4) |
++                ((params.InUIColorAlpha != nullptr ? 1u : 0u) << 8) |
++                ((params.IsHudlessColor ? 1u : 0u) << 9) |
++                ((params.ClearBeforeWarping ? 1u : 0u) << 10);
++            if (startup_active && (startup_report || startup_state != startup_last_state)) {
++                spdlog::info("[PragmataStartupV5] t={:.3f} evaluate eye={} mode={} mvType={} ui={} hudless={} clear={} width={} height={} dlssFix={}",
++                    startup_elapsed, (int)nEye, (int)params.Mode, (int)params.MotionVectorsType,
++                    params.InUIColorAlpha != nullptr, params.IsHudlessColor, params.ClearBeforeWarping,
++                    colorDesc.Width, colorDesc.Height, vr->is_fix_dlss());
++                startup_last_state = startup_state;
++            }
++#endif
++            {
++#if defined(PRAGMATA)
++                pragmata_resolve_capture::Scope scope(resolve_ready ? &resolve_capture : nullptr, params, vr->d3d12Renderer, frame_count);
++#endif
++                EvaluateFrameWarp(params);
++            }
++
+         } else if (vr->is_using_afw_foveated()) {
+             auto foveatedVP = vr->get_runtime()->foveated_viewports[nEye];
+             D3D12_VIEWPORT vp;
+@@ -271,7 +893,29 @@ vr::EVRCompositorError D3D12Component::on_frame(VR* vr) {
+             vpOther.Width = foveatedVPOther.Width * colorDesc.Width;
+             vpOther.Height = foveatedVPOther.Height * colorDesc.Height;
+             params.foveatedArea = RECT(vpOther.TopLeftX, vpOther.TopLeftY, vpOther.TopLeftX + vpOther.Width, vpOther.TopLeftY + vpOther.Height);
+-            EvaluateFrameWarp(params);
++
++#if defined(PRAGMATA)
++            // Emit on state transitions as well as the periodic timing sample.
++            static unsigned int startup_last_state = ~0u;
++            const unsigned int startup_state = (unsigned int)params.Mode |
++                ((unsigned int)params.MotionVectorsType << 4) |
++                ((params.InUIColorAlpha != nullptr ? 1u : 0u) << 8) |
++                ((params.IsHudlessColor ? 1u : 0u) << 9) |
++                ((params.ClearBeforeWarping ? 1u : 0u) << 10);
++            if (startup_active && (startup_report || startup_state != startup_last_state)) {
++                spdlog::info("[PragmataStartupV5] t={:.3f} evaluate eye={} mode={} mvType={} ui={} hudless={} clear={} width={} height={} dlssFix={}",
++                    startup_elapsed, (int)nEye, (int)params.Mode, (int)params.MotionVectorsType,
++                    params.InUIColorAlpha != nullptr, params.IsHudlessColor, params.ClearBeforeWarping,
++                    colorDesc.Width, colorDesc.Height, vr->is_fix_dlss());
++                startup_last_state = startup_state;
++            }
++#endif
++            {
++#if defined(PRAGMATA)
++                pragmata_resolve_capture::Scope scope(resolve_ready ? &resolve_capture : nullptr, params, vr->d3d12Renderer, frame_count);
++#endif
++                EvaluateFrameWarp(params);
++            }
+         }
+ 
+         for (int i = 0; i < 2; i++) {
+@@ -307,6 +951,56 @@ vr::EVRCompositorError D3D12Component::on_frame(VR* vr) {
+     }
+ 
+     vr->d3d12Renderer->EndCommandList(backbuffer_index);
++#if defined(PRAGMATA)
++    if (capture_this_frame) {
++        try {
++            const auto origin = nEye == EyeLeft ? L"from_left_" : L"from_right_";
++            const auto save = [&](ID3D12Resource* tex, D3D12_RESOURCE_STATES state, const wchar_t* name) {
++                if (!tex) return;
++                const auto file = capture_folder / (std::wstring(origin) + name + L".dds");
++                const auto desc = tex->GetDesc();
++                const auto hr = DirectX::SaveDDSTextureToFile(command_queue, tex, file.c_str(), state, state);
++                spdlog::info("[PragmataAFWCaptureV4] file={} inputEye={} frame={} texture={} size={}x{} format={} state={} hr={}",
++                    file.string(), static_cast<int>(nEye), frame_count, static_cast<void*>(tex),
++                    desc.Width, desc.Height, static_cast<int>(desc.Format), static_cast<unsigned int>(state),
++                    static_cast<long>(hr));
++            };
++            // Output states match the existing OpenXR submission copies below.
++            save(m_eyeFrameBuffers.eyeFrameBuffers[0].color.pTexture,
++                D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE, L"output_left");
++            save(m_eyeFrameBuffers.eyeFrameBuffers[1].color.pTexture,
++                D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE, L"output_right");
++            for (unsigned int pass = 0; pass < 2; ++pass) {
++                const auto suffix = L"scatter" + std::to_wstring(pass);
++                save(resolve_capture.scatter_source[pass].Get(), D3D12_RESOURCE_STATE_COPY_DEST, (suffix + L"_source").c_str());
++                save(resolve_capture.scatter_ui[pass].Get(), D3D12_RESOURCE_STATE_COPY_DEST, (suffix + L"_ui").c_str());
++            }
++            if (resolve_capture.captured) {
++                if (resolve_capture.capture_mask & 1u) {
++                    save(resolve_capture.before[0].Get(), D3D12_RESOURCE_STATE_COPY_DEST, L"before_resolve_left");
++                    save(resolve_capture.after[0].Get(), D3D12_RESOURCE_STATE_COPY_DEST, L"after_resolve_left");
++                }
++                if (resolve_capture.capture_mask & 2u) {
++                    save(resolve_capture.before[1].Get(), D3D12_RESOURCE_STATE_COPY_DEST, L"before_resolve_right");
++                    save(resolve_capture.after[1].Get(), D3D12_RESOURCE_STATE_COPY_DEST, L"after_resolve_right");
++                }
++            }
++            spdlog::info("[PragmataHistoryV10] eye={} ready={} matches={} captured={} known={},{}",
++                static_cast<int>(nEye), resolve_ready, resolve_capture.matches, resolve_capture.captured,
++                resolve_capture.known[0], resolve_capture.known[1]);
++            save(capture_scene.Get(), D3D12_RESOURCE_STATE_COPY_DEST, L"input_scene");
++            save(capture_ui.Get(), D3D12_RESOURCE_STATE_COPY_DEST, L"input_ui");
++            spdlog::info("[PragmataAFWCaptureV4] inputEye={} uiFix={} isHudless={} mode={} capturePending={}",
++                static_cast<int>(nEye), vr->m_enable_ui_fix->value(), params.IsHudlessColor,
++                vr->m_framewarp_mode->value(), capture_pending);
++            if (!capture_pending) spdlog::info("[PragmataAFWCaptureV4] finished; check file HRESULTs");
++        } catch (const std::exception& e) {
++            capture_pending = 0;
++            spdlog::error("[PragmataAFWCaptureV4] output capture failed: {}", e.what());
++        }
++    }
++#endif
++
+ 
+     //#############################
+     //#Frame Warp Module End
+@@ -1086,3 +1780,5 @@ void D3D12Component::OpenXR::copy(
+     }
+ }
+ } // namespace vrmod
++
++
+diff --git a/src/mods/vr/runtimes/OpenVR.cpp b/src/mods/vr/runtimes/OpenVR.cpp
+index 997c424..7510cb3 100644
+--- a/src/mods/vr/runtimes/OpenVR.cpp
++++ b/src/mods/vr/runtimes/OpenVR.cpp
+@@ -148,14 +148,18 @@ VRRuntime::Error OpenVR::update_matrices(float nearz, float farz){
+ 
+         XrMatrix4x4f_CreateProjection((XrMatrix4x4f*)&this->afw_projections[i], GRAPHICS_D3D, L_full, R_full, U_full, D_full, nearz, farz);
+ 
+-        float edgeCutout = vr->get_edge_scan_line_fix_range();
+-        if (edgeCutout > 0) {
+-            float edgeCutoutTanW = totalTanW * edgeCutout;
+-
+-            if (i == 0)
+-                L_full -= edgeCutoutTanW;
+-            else
+-                R_full += edgeCutoutTanW;
++        // To fix scan line artifacts in the periphery, add extra fov to the other eye towards the current eye
++        // This is to reduce the gap area between eyes when using TAA.
++        if (vr->is_using_afw_foveated()) {
++            float edgeExtend = vr->get_edge_scan_line_fix_range();
++            if (edgeExtend > 0) {
++                float edgeExtendTanW = totalTanW * edgeExtend;
++
++                if (i == 1)
++                    L_full -= edgeExtendTanW;
++                else
++                    R_full += edgeExtendTanW;
++            }
+         }
+ 
+         // Update projection matrix
+diff --git a/src/mods/vr/runtimes/OpenXR.cpp b/src/mods/vr/runtimes/OpenXR.cpp
+index 4f871ea..48b3e9c 100644
+--- a/src/mods/vr/runtimes/OpenXR.cpp
++++ b/src/mods/vr/runtimes/OpenXR.cpp
+@@ -347,8 +347,8 @@ VRRuntime::Error OpenXR::update_matrices(float nearz, float farz) {
+             gaze_angle_x[0] = stable_gaze_x + convergence_angle;
+             gaze_angle_x[1] = stable_gaze_x - convergence_angle;
+             // Pitch
+-            gaze_angle_y[0] = stable_gaze_y;
+-            gaze_angle_y[1] = stable_gaze_y;
++            gaze_angle_y[0] = stable_gaze_y + offsetTop;
++            gaze_angle_y[1] = stable_gaze_y + offsetTop;
+         }
+     } else {
+         gaze_angle_x[0] += convergence_angle;
+
