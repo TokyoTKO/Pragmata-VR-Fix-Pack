@@ -1,0 +1,46 @@
+name: Build Pragmata V17 menu test
+
+on:
+  push:
+    branches: [pragmata-v17-menu-test]
+    paths:
+      - source/pragmata-vr-fixes.patch
+      - .github/workflows/pragmata-v17.yml
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-2022
+    timeout-minutes: 45
+    steps:
+      - name: Check out test branch
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+
+      - name: Check out pinned AFW source
+        shell: pwsh
+        run: |
+          git clone --no-checkout https://github.com/PureDark/REFramework.git reframework-source
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          git -C reframework-source checkout c619b761ee71f793e06c2559d8b762dacb43dbc4
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          git -C reframework-source submodule update --init --recursive
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Apply recovered V16 and targeted V17 patch
+        run: git -C reframework-source apply ../source/pragmata-vr-fixes.patch
+
+      - name: Configure
+        run: cmake -S reframework-source -B reframework-source/build -G "Visual Studio 17 2022" -A x64 -DCMAKE_BUILD_TYPE=Release -DDEVELOPER_MODE=ON "-DCMAKE_POLICY_VERSION_MINIMUM=3.5"
+
+      - name: Build
+        run: cmake --build reframework-source/build --config Release --target PRAGMATA --parallel 4
+
+      - name: Upload test DLL
+        uses: actions/upload-artifact@4cec3d8aa04e39d1a68397de0c4cd6fb9dce8ec1
+        with:
+          name: PRAGMATA-menu-trails-v17
+          path: reframework-source/build/bin/PRAGMATA/dinput8.dll
+          if-no-files-found: error
+          retention-days: 30
