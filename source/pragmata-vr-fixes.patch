@@ -18,10 +18,10 @@ index 8571a1c..864a473 100644
          return;
      }
 diff --git a/src/mods/VR.cpp b/src/mods/VR.cpp
-index 181c515..ffb89c3 100644
+index 181c515..969a857 100644
 --- a/src/mods/VR.cpp
 +++ b/src/mods/VR.cpp
-@@ -63,6 +63,14 @@
+@@ -63,6 +63,15 @@
  #include "VR.hpp"
  #include <MinHook.h>
  
@@ -29,6 +29,7 @@ index 181c515..ffb89c3 100644
 +namespace pragmata_resolve_capture {
 +    void note_costume_draw(uint64_t frame);
 +    void note_firmware_draw(uint64_t frame);
++    void note_list_menu_draw(uint64_t frame);
 +    void note_main_menu_draw(uint64_t frame);
 +}
 +#endif
@@ -36,7 +37,7 @@ index 181c515..ffb89c3 100644
  bool inside_on_end = false;
  uint32_t actual_frame_count = 0;
  
-@@ -298,11 +306,25 @@ void VR::on_camera_get_projection_matrix(REManagedObject* camera, Matrix4x4f* re
+@@ -298,11 +307,25 @@ void VR::on_camera_get_projection_matrix(REManagedObject* camera, Matrix4x4f* re
      }
  }
  
@@ -62,7 +63,7 @@ index 181c515..ffb89c3 100644
      if (result == nullptr || !g_framework->is_ready() || !vr->is_hmd_active() || vr->m_disable_gui_camera_projection_matrix_override) {
          return original_func(camera, result);
      }
-@@ -1783,9 +1805,42 @@ std::optional<std::string> VR::hijack_camera() {
+@@ -1783,9 +1806,42 @@ std::optional<std::string> VR::hijack_camera() {
          
          // Pattern scan for the native function call
          auto ref = utility::scan((uintptr_t)func, 0x100, "49 8B C8 E8");
@@ -106,7 +107,7 @@ index 181c515..ffb89c3 100644
  
              if (native_func != get_projection_matrix) {
                  // Hook the native function
-@@ -1793,6 +1848,10 @@ std::optional<std::string> VR::hijack_camera() {
+@@ -1793,6 +1849,10 @@ std::optional<std::string> VR::hijack_camera() {
  
                  if (g_projection_matrix_hook2->create()) {
                      spdlog::info("Hooked via.gui.GUICamera.get_ProjectionMatrix");
@@ -117,7 +118,7 @@ index 181c515..ffb89c3 100644
                  }
              } else {
                  spdlog::info("Did not hook via.gui.GUICamera.get_ProjectionMatrix, same as via.Camera.get_ProjectionMatrix");
-@@ -2596,10 +2655,9 @@ void VR::disable_bad_effects() {
+@@ -2596,10 +2656,9 @@ void VR::disable_bad_effects() {
  
      if (get_antialiasing_method != nullptr && set_antialiasing_method != nullptr) {
  
@@ -131,7 +132,7 @@ index 181c515..ffb89c3 100644
              const auto antialiasing = get_antialiasing_method->call<via::render::RenderConfig::AntiAliasingType>(context, render_config);
  
              // Disable TAA
-@@ -3052,6 +3110,8 @@ void VR::on_present() {
+@@ -3052,6 +3111,8 @@ void VR::on_present() {
      if (GetAsyncKeyState(VK_NUMPAD3) == 0 && btn3 == true) {
          btn3 = false;
          mDebug3 = !mDebug3;
@@ -140,7 +141,7 @@ index 181c515..ffb89c3 100644
      }
      static bool btn4 = false;
      if (GetAsyncKeyState(VK_NUMPAD4) < 0 && btn4 == false) {
-@@ -3302,6 +3362,7 @@ struct GUIRestoreData {
+@@ -3302,6 +3363,7 @@ struct GUIRestoreData {
      via::gui::ViewType view_type{ via::gui::ViewType::Screen };
      bool overlay{false};
      bool detonemap{true};
@@ -148,11 +149,17 @@ index 181c515..ffb89c3 100644
  };
  
  thread_local std::vector<std::unique_ptr<GUIRestoreData>> g_elements_to_reset{};
-@@ -3323,6 +3384,50 @@ bool VR::on_pre_gui_draw_element(REComponent* gui_element, void* primitive_conte
+@@ -3323,6 +3385,56 @@ bool VR::on_pre_gui_draw_element(REComponent* gui_element, void* primitive_conte
          const auto name = utility::re_game_object::get_name(game_object);
          const auto name_hash = utility::hash(name);
  
 +#if defined(PRAGMATA)
++        // V18: structural candidate, not a screen-name whitelist. The priority
++        // gate is evaluated at AFW submission; V17 exceptions remain intact.
++        if (game_object->shouldDraw &&
++            utility::re_component::find(gui_element, "app.gui.GuiListCtrlEventHolder") != nullptr) {
++            pragmata_resolve_capture::note_list_menu_draw(m_render_frame_count);
++        }
 +        if (name_hash == "ui5146Gui"_fnv && game_object->shouldDraw) {
 +            pragmata_resolve_capture::note_costume_draw(m_render_frame_count);
 +        }
@@ -199,7 +206,7 @@ index 181c515..ffb89c3 100644
          switch (name_hash) {
          // Don't mess with this, causes weird black boxes on the sides of the screen
          case "GUI_PillarBox"_fnv:
-@@ -3354,7 +3459,7 @@ bool VR::on_pre_gui_draw_element(REComponent* gui_element, void* primitive_conte
+@@ -3354,7 +3466,7 @@ bool VR::on_pre_gui_draw_element(REComponent* gui_element, void* primitive_conte
          case "Gui_ui0440"_fnv: // Black bars in cutscenes
              game_object->shouldDraw = false;
              return false;
@@ -208,7 +215,7 @@ index 181c515..ffb89c3 100644
          case "GuiPlayerGimmick0040"_fnv:  //blood analyzer
              return true;
  #endif
-@@ -3408,10 +3513,27 @@ bool VR::on_pre_gui_draw_element(REComponent* gui_element, void* primitive_conte
+@@ -3408,10 +3520,27 @@ bool VR::on_pre_gui_draw_element(REComponent* gui_element, void* primitive_conte
  
          auto view = sdk::call_object_func<REComponent*>(gui_element, "get_View", context, gui_element);
  
@@ -237,7 +244,7 @@ index 181c515..ffb89c3 100644
                  static sdk::RETypeDefinition* via_render_mesh_typedef = nullptr;
  
                  if (via_render_mesh_typedef == nullptr) {
-@@ -3419,6 +3541,7 @@ bool VR::on_pre_gui_draw_element(REComponent* gui_element, void* primitive_conte
+@@ -3419,6 +3548,7 @@ bool VR::on_pre_gui_draw_element(REComponent* gui_element, void* primitive_conte
  
                      // wait
                      if (via_render_mesh_typedef == nullptr) {
@@ -245,7 +252,7 @@ index 181c515..ffb89c3 100644
                          return true;
                      }
                  }
-@@ -3427,6 +3550,7 @@ bool VR::on_pre_gui_draw_element(REComponent* gui_element, void* primitive_conte
+@@ -3427,6 +3557,7 @@ bool VR::on_pre_gui_draw_element(REComponent* gui_element, void* primitive_conte
                  // because it might be something physical in the game world
                  // that the player can interact with
                  if (utility::re_component::find(game_object->transform, via_render_mesh_typedef->get_type()) != nullptr) {
@@ -253,7 +260,7 @@ index 181c515..ffb89c3 100644
                      return true;
                  }
  
-@@ -3440,6 +3564,9 @@ bool VR::on_pre_gui_draw_element(REComponent* gui_element, void* primitive_conte
+@@ -3440,6 +3571,9 @@ bool VR::on_pre_gui_draw_element(REComponent* gui_element, void* primitive_conte
                  auto& restore_data = g_elements_to_reset.emplace_back(std::make_unique<GUIRestoreData>());
                  auto original_game_object_pos = sdk::get_transform_position(game_object->transform);
  
@@ -263,7 +270,7 @@ index 181c515..ffb89c3 100644
                  restore_data->element = gui_element;
                  restore_data->view = view;
                  restore_data->original_position = original_game_object_pos;
-@@ -3469,11 +3596,14 @@ bool VR::on_pre_gui_draw_element(REComponent* gui_element, void* primitive_conte
+@@ -3469,11 +3603,14 @@ bool VR::on_pre_gui_draw_element(REComponent* gui_element, void* primitive_conte
                  }*/
  
                  auto camera = sdk::get_primary_camera();
@@ -278,7 +285,7 @@ index 181c515..ffb89c3 100644
                      if (camera_object != nullptr && camera_object->transform != nullptr) {
                          auto& gui_matrix = game_object->transform->worldTransform;
                          auto child = sdk::call_object_func<REManagedObject*>(view, "get_Child", context, view);
-@@ -3571,7 +3701,24 @@ bool VR::on_pre_gui_draw_element(REComponent* gui_element, void* primitive_conte
+@@ -3571,7 +3708,24 @@ bool VR::on_pre_gui_draw_element(REComponent* gui_element, void* primitive_conte
  
                          auto camera_transform = camera_object->transform;
  
@@ -304,7 +311,7 @@ index 181c515..ffb89c3 100644
                          auto camera_position = camera_matrix[3];
  
                          glm::quat wanted_rotation{};
-@@ -3628,6 +3775,11 @@ bool VR::on_pre_gui_draw_element(REComponent* gui_element, void* primitive_conte
+@@ -3628,6 +3782,11 @@ bool VR::on_pre_gui_draw_element(REComponent* gui_element, void* primitive_conte
                              ui_scale = 1.0f;
                              break;
                          default:
@@ -316,7 +323,7 @@ index 181c515..ffb89c3 100644
                              break;
                          }
  
-@@ -3655,7 +3807,7 @@ bool VR::on_pre_gui_draw_element(REComponent* gui_element, void* primitive_conte
+@@ -3655,7 +3814,7 @@ bool VR::on_pre_gui_draw_element(REComponent* gui_element, void* primitive_conte
                                  0, 0, 0, 1
                              };
  
@@ -325,7 +332,7 @@ index 181c515..ffb89c3 100644
                                  bool is_exception = false;
  
                                  switch (name_hash) {
-@@ -3673,9 +3825,12 @@ bool VR::on_pre_gui_draw_element(REComponent* gui_element, void* primitive_conte
+@@ -3673,9 +3832,12 @@ bool VR::on_pre_gui_draw_element(REComponent* gui_element, void* primitive_conte
                                  }
                              }
  
@@ -339,7 +346,7 @@ index 181c515..ffb89c3 100644
                          const auto wanted_rotation_mat = Matrix4x4f{wanted_rotation};
  
  #if defined(RE9)
-@@ -3686,9 +3841,42 @@ bool VR::on_pre_gui_draw_element(REComponent* gui_element, void* primitive_conte
+@@ -3686,9 +3848,42 @@ bool VR::on_pre_gui_draw_element(REComponent* gui_element, void* primitive_conte
                          }
   #endif
  
@@ -382,7 +389,7 @@ index 181c515..ffb89c3 100644
  
                          // Scales the GUI so it's not massive.
                          if (!wants_face_glue) {
-@@ -3842,6 +4030,9 @@ bool VR::on_pre_gui_draw_element(REComponent* gui_element, void* primitive_conte
+@@ -3842,6 +4037,9 @@ bool VR::on_pre_gui_draw_element(REComponent* gui_element, void* primitive_conte
  }
  
  void VR::on_gui_draw_element(REComponent* gui_element, void* primitive_context) {
@@ -392,7 +399,7 @@ index 181c515..ffb89c3 100644
      
  
      //spdlog::info("VR: on_gui_draw_element");
-@@ -3850,7 +4041,7 @@ void VR::on_gui_draw_element(REComponent* gui_element, void* primitive_context)
+@@ -3850,7 +4048,7 @@ void VR::on_gui_draw_element(REComponent* gui_element, void* primitive_context)
  
      // Restore elements back to original states
      for (auto& data : g_elements_to_reset) {
@@ -401,7 +408,7 @@ index 181c515..ffb89c3 100644
          sdk::call_object_func<void*>(data->view, "set_Overlay", context, data->view, data->overlay);
          sdk::call_object_func<void*>(data->view, "set_Detonemap", context, data->view, data->detonemap);
          
-@@ -3860,7 +4051,11 @@ void VR::on_gui_draw_element(REComponent* gui_element, void* primitive_context)
+@@ -3860,7 +4058,11 @@ void VR::on_gui_draw_element(REComponent* gui_element, void* primitive_context)
              //sdk::set_transform_position(game_object->transform, data->original_position);
  
              auto& gui_matrix = game_object->transform->worldTransform;
@@ -428,7 +435,7 @@ index 84a5202..a17c07f 100644
      void update_camera_data(int frame_count);
      void get_camera_data();
 diff --git a/src/mods/vr/D3D12Component.cpp b/src/mods/vr/D3D12Component.cpp
-index a02d078..23651e9 100644
+index a02d078..94c2600 100644
 --- a/src/mods/vr/D3D12Component.cpp
 +++ b/src/mods/vr/D3D12Component.cpp
 @@ -1,4 +1,15 @@
@@ -447,7 +454,7 @@ index a02d078..23651e9 100644
  #include <utility/ScopeGuard.hpp>
  
  #include "../VR.hpp"
-@@ -9,8 +20,482 @@
+@@ -9,8 +20,516 @@
  
  #include "D3D12Component.hpp"
  
@@ -769,7 +776,41 @@ index a02d078..23651e9 100644
 +
 +// Use the game's pause service rather than menu names or screen-space rectangles.
 +// If the query is unavailable, retain the user-confirmed V10 gameplay behaviour.
++// V18: one-frame draw heartbeat for list-controlled interfaces. Input priority
++// >=300 is a tested-sample heuristic, not a proven enumeration of every menu.
++static std::atomic<uint64_t> list_menu_draw_frame{std::numeric_limits<uint64_t>::max()};
++void note_list_menu_draw(uint64_t frame) {
++    list_menu_draw_frame.store(frame, std::memory_order_relaxed);
++}
++
++static bool list_menu_active(uint64_t frame) {
++    const auto last_draw = list_menu_draw_frame.load(std::memory_order_relaxed);
++    const bool recent_draw = last_draw != std::numeric_limits<uint64_t>::max() &&
++        frame >= last_draw && frame - last_draw <= 1;
++    int priority = -1;
++    if (recent_draw && g_framework->is_ready()) {
++        static sdk::REMethodDefinition* getter = nullptr;
++        if (!getter) {
++            auto* type = sdk::find_type_definition("app.GuiManager");
++            if (type) getter = type->get_method("get_CurrentInputLevel");
++        }
++        if (getter && getter->get_num_params() == 0) {
++            auto* manager = sdk::get_managed_singleton<::REManagedObject>("app.GuiManager");
++            if (manager) priority = getter->call<int>(sdk::get_thread_context(), manager);
++        }
++    }
++    const bool active = recent_draw && priority >= 300;
++    static int last_active = -1;
++    if (last_active != static_cast<int>(active)) {
++        spdlog::info("[PragmataMenuV18] structuralMenu={} inputPriority={} recentListDraw={} frame={}",
++            active, priority, recent_draw, frame);
++        last_active = static_cast<int>(active);
++    }
++    return active;
++}
++
 +static bool menu_pause_active(uint64_t frame) {
++    if (list_menu_active(frame)) return true;
 +    const auto last_main_menu_frame = main_menu_draw_frame.load(std::memory_order_relaxed);
 +    const bool main_menu = last_main_menu_frame != std::numeric_limits<uint64_t>::max() &&
 +        frame >= last_main_menu_frame && frame - last_main_menu_frame <= 1;
@@ -930,7 +971,7 @@ index a02d078..23651e9 100644
      if (m_openvr.left_eye_tex[0].texture == nullptr || m_force_reset) {
          setup();
      }
-@@ -61,6 +546,59 @@ vr::EVRCompositorError D3D12Component::on_frame(VR* vr) {
+@@ -61,6 +580,59 @@ vr::EVRCompositorError D3D12Component::on_frame(VR* vr) {
      }
  
      auto runtime = vr->get_runtime();
@@ -990,7 +1031,7 @@ index a02d078..23651e9 100644
  
  
      const auto frame_count = vr->m_render_frame_count;
-@@ -136,7 +674,68 @@ vr::EVRCompositorError D3D12Component::on_frame(VR* vr) {
+@@ -136,7 +708,68 @@ vr::EVRCompositorError D3D12Component::on_frame(VR* vr) {
          }
      }
  
@@ -1059,7 +1100,7 @@ index a02d078..23651e9 100644
  
      if ((vr->is_using_any_afw()) && m_eyeFrameBuffers.eyeFrameBuffers[0].color.pTexture && vr->depthTex[0]) {
          static FrameBufferDesc s_CurrentEyeFrameBuffer{};
-@@ -177,7 +776,30 @@ vr::EVRCompositorError D3D12Component::on_frame(VR* vr) {
+@@ -177,7 +810,30 @@ vr::EVRCompositorError D3D12Component::on_frame(VR* vr) {
                  vr->d3d12Renderer->Sharpen(cmdList, eyeFrameBuffer.color, s_CurrentEyeFrameBuffer.color, vr->get_sharpness());
                  s_CurrentEyeFrameBuffer.color = eyeFrameBuffer.color;
              }
@@ -1091,7 +1132,7 @@ index a02d078..23651e9 100644
          } else if (vr->is_using_afw_foveated()) {
              auto foveatedVP = vr->get_runtime()->foveated_viewports[nEye];
              D3D12_VIEWPORT vp;
-@@ -271,7 +893,29 @@ vr::EVRCompositorError D3D12Component::on_frame(VR* vr) {
+@@ -271,7 +927,29 @@ vr::EVRCompositorError D3D12Component::on_frame(VR* vr) {
              vpOther.Width = foveatedVPOther.Width * colorDesc.Width;
              vpOther.Height = foveatedVPOther.Height * colorDesc.Height;
              params.foveatedArea = RECT(vpOther.TopLeftX, vpOther.TopLeftY, vpOther.TopLeftX + vpOther.Width, vpOther.TopLeftY + vpOther.Height);
@@ -1122,7 +1163,7 @@ index a02d078..23651e9 100644
          }
  
          for (int i = 0; i < 2; i++) {
-@@ -307,6 +951,56 @@ vr::EVRCompositorError D3D12Component::on_frame(VR* vr) {
+@@ -307,6 +985,56 @@ vr::EVRCompositorError D3D12Component::on_frame(VR* vr) {
      }
  
      vr->d3d12Renderer->EndCommandList(backbuffer_index);
@@ -1179,11 +1220,10 @@ index a02d078..23651e9 100644
  
      //#############################
      //#Frame Warp Module End
-@@ -1086,3 +1780,5 @@ void D3D12Component::OpenXR::copy(
+@@ -1086,3 +1814,4 @@ void D3D12Component::OpenXR::copy(
      }
  }
  } // namespace vrmod
-+
 +
 diff --git a/src/mods/vr/runtimes/OpenVR.cpp b/src/mods/vr/runtimes/OpenVR.cpp
 index 997c424..7510cb3 100644
@@ -1231,4 +1271,3 @@ index 4f871ea..48b3e9c 100644
          }
      } else {
          gaze_angle_x[0] += convergence_angle;
-
