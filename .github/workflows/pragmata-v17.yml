@@ -1,11 +1,10 @@
-name: Build Pragmata V17 menu test
+name: Build Pragmata V18 menu test
 
 on:
   push:
     branches: [pragmata-v17-menu-test]
     paths:
       - source/pragmata-vr-fixes.patch
-      - .github/workflows/pragmata-v17.yml
 
 permissions:
   contents: read
@@ -28,7 +27,7 @@ jobs:
           git -C reframework-source submodule update --init --recursive
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-      - name: Apply recovered V16 and targeted V17 patch
+      - name: Apply recovered fixes and V18 menu detector
         run: git -C reframework-source apply ../source/pragmata-vr-fixes.patch
 
       - name: Handle hyphens in upstream version tags
@@ -49,7 +48,7 @@ jobs:
       - name: Upload test DLL
         uses: actions/upload-artifact@4cec3d8aa04e39d1a68397de0c4cd6fb9dce8ec1
         with:
-          name: PRAGMATA-menu-trails-v17
+          name: PRAGMATA-menu-trails-v18
           path: reframework-source/build/bin/PRAGMATA/dinput8.dll
           if-no-files-found: error
           retention-days: 30
