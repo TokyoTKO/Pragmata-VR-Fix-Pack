@@ -1,13 +1,13 @@
 {
-  "Pragmata_VR_Pack/BUILD_INFO.txt": "f444f47aeabf456aeca7d1e91417c660bf4ff6c19118a74e1b15d979d1011a2a",
-  "Pragmata_VR_Pack/FILES.txt": "a512e2b4095a004b66c1e4da4cdc195bf8fe628c88c08bf21ce0cfab74e6b3db",
+  "Pragmata_VR_Pack/BUILD_INFO.txt": "78ed61e03f163e5e0fc76cab067cb5d34b2fb951397868fa7b40ec929645ba98",
+  "Pragmata_VR_Pack/FILES.txt": "f998ebd2d61b9ce57c562f7eb470fd534413953551f24c12d4e57da33e68160a",
   "Pragmata_VR_Pack/Notices/OpenXR-Apache-2.0.txt": "8c6db340475136df3c1201d458fa5755698eace76e510471ecc9d857d6083dac",
   "Pragmata_VR_Pack/Notices/REFramework-MIT.txt": "a8165dd9e61bed92a3928720f3906bce927b7652da0494ebf27117c898b4108e",
   "Pragmata_VR_Pack/Notices/REFramework-third-party-source-notices.txt": "589fd26f0cc0044dcaa2535c5ed3053b0d0621c4e712ecf93e0305531f5e89d0",
   "Pragmata_VR_Pack/OPTIONAL_TESTED_GRAPHICS.txt": "17e3a590034878ef3d9b8e609b18d890a5ca7c8e0dbcd6e120eba8a6bcc1ac19",
-  "START_HERE.html": "9fd5ee29322888d817227da64215a85c6e3db5ec06605d61521e2e6b4f932279",
-  "START_HERE.txt": "158c240c88d4a75f40eae021d91cbac1663c4b0883eb7297126c76abd1e781ab",
-  "dinput8.dll": "b996fca7b727a178bac49920bbcf79707030913fbf98e6eeb9f9954c1cf0e428",
+  "START_HERE.html": "959bf494d5ac0597b4d1df6fe1a63e4613c923b25c08db7dd2f2560781ff7cbe",
+  "START_HERE.txt": "f6f54e862642d0433b26263adc9f579140b61c68ccc7e6628bcfe7eae780bdd7",
+  "dinput8.dll": "860d0fb49396869ae977ebcc304eab13da16b0eab0ed9f419581aed34c3a3e1c",
   "openxr_loader.dll": "6059add4735b5fff1a77d649eee02ba2dd1cd04cc739bd8e89ead273c0259ffc",
   "re2_fw_config.txt": "9b7529a99e8f38b3bbf3232a18f8c83cb18e6a2e73006d0647c8d7ed3112260d",
   "reframework/autorun/zz_pragmata_transform_probe.lua": "18e42dc9d6cc47799744877aa8f4a955449f242d4209cf6d166d77827494e3d7",
@@ -16,5 +16,6 @@
   "reframework/autorun/zzzzz_pragmata_label_probe.lua": "bbeaa5f8bfcc1d0f20ece5e247d554b849bcf1a4fc18f63f027b74b9b6c2e300",
   "reframework/autorun/zzzzz_pragmata_priority_ui_probe.lua": "efae1d54705b4e0a7fb226150ca57a38b3c7bfe0becb77be69991cb95b7bf665",
   "reframework/autorun/zzzzzz_pragmata_door_hack_inspect.lua": "47a69b939ab7a8ae1955663d65852049e67e1f289b066b2afb366aab032aab76",
+  "reframework/autorun/zzzzzzzz_pragmata_hud_orange_test.lua": "313ece7f51dd10215edf523eaa2e1ba6d75675d1c9245fbd77eff928ef2f7398",
   "reframework/data/hud_control_settings.json": "387acb0c18a6559d75475ace0f7cfc44f6e57939e307183ff8760ecee4b6c03b"
 }

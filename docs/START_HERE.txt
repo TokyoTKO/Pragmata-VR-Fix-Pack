@@ -1,10 +1,10 @@
-PRAGMATA VR FIX PACK — EXPERIMENTAL v1
+PRAGMATA VR FIX PACK — EXPERIMENTAL v1.1.0
 
 Third-person VR using a gamepad. Prepared and tested by WinterWolf with coding assistance from
 GPT-6 Astra (Medium), built on the credited mod authors' work (see CREDITS).
 
 READ THIS FIRST
-This setup was tested through roughly the first 90 minutes of the game on one PC.
+Tested on one PC, including subsequent menu, hacking and combat checks.
 The assembled download has not yet been tested on other installations/PCs.
 Provided as-is; compatibility, individual support and future updates are not
 promised. No motion-controller gameplay is provided.
@@ -57,8 +57,12 @@ INSTALL — WITH THE GAME CLOSED
 Do not install a nightly or another AFW build over this pack. Our modified
 REFramework is included. Keep the supplied scripts even when their names say
 probe, inspect or test: these particular scripts implement the fixes.
-If you already have our working setup, this release contains no new fixes;
-there is no need to reinstall it.
+UPGRADING AN EXISTING WORKING INSTALLATION
+With the game closed, back up and replace only dinput8.dll and add/replace:
+reframework/autorun/zzzzzzzz_pragmata_hud_orange_test.lua
+Keep your existing other Lua scripts, dependencies and configuration unchanged.
+If these exact V18 and orange-fix files are already installed, no reinstall is needed.
+Temporary audit/capture scripts are not included in this release.
 
 SETTINGS AND FIRST LAUNCH
 - In Virtual Desktop Streamer: OpenXR Runtime = VDXR; codec = AV1 10-bit.
@@ -84,11 +88,14 @@ config.ini is not overwritten by this pack.
 WHAT IS IMPROVED / WHAT REMAINS
 Fixes cover HUD placement, several hacking interfaces, objectives/hints,
 cinematic side bars, Shelter holoscreens, costume selection, Firmware Updater,
-head-following subtitles and the main menu.
+head-following subtitles, the main menu, both Stamp Club interfaces and Bot Database.
+V18 also detects high-priority list-based menus to apply the same trails treatment.
+The orange HUD workaround suppresses one corrupting EffectTexture leaf; the energy
+HUD remained functional in combat and out of combat during headset testing.
+This may also suppress the intended glow of that one effect.
 Remaining compromises: reflective surfaces (especially the Shelter), dark/faint
 location labels, reticle doubling when focusing at a different depth, and some
-loading-screen/cinematic artifacts. Later-game elements outside the first 90 minutes 
-remain untested and may affect play.
+loading-screen/cinematic artifacts. Full-game coverage remains unverified.
 
 IF THIS PACKAGE APPEARS NOT TO WORK
 First check file placement, the three requirements and the settings above.

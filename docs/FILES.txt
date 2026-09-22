@@ -16,4 +16,5 @@ reframework/autorun/zzzzz_pragmata_cinematic_probe.lua
 reframework/autorun/zzzzz_pragmata_label_probe.lua
 reframework/autorun/zzzzz_pragmata_priority_ui_probe.lua
 reframework/autorun/zzzzzz_pragmata_door_hack_inspect.lua
+reframework/autorun/zzzzzzzz_pragmata_hud_orange_test.lua
 reframework/data/hud_control_settings.json

@@ -1,10 +1,10 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Pragmata VR Fix Pack — Start Here</title><style>body{max-width:850px;margin:35px auto;padding:0 20px;background:#fafafa;color:#202020;font:16px/1.6 system-ui}pre{font:inherit;white-space:pre-wrap;overflow-wrap:anywhere}a{color:#0754b8}</style></head><body><pre>PRAGMATA VR FIX PACK — EXPERIMENTAL v1
+<!doctype html><html lang="en"><meta charset="utf-8"><title>PRAGMATA VR Fix Pack — Start Here</title><style>body{max-width:850px;margin:35px auto;padding:0 20px;font:16px/1.6 system-ui}pre{font:inherit;white-space:pre-wrap;overflow-wrap:anywhere}</style><pre>PRAGMATA VR FIX PACK — EXPERIMENTAL v1.1.0
 
 Third-person VR using a gamepad. Prepared and tested by WinterWolf with coding assistance from
 GPT-6 Astra (Medium), built on the credited mod authors&#x27; work (see CREDITS).
 
 READ THIS FIRST
-This setup was tested through roughly the first 90 minutes of the game on one PC.
+Tested on one PC, including subsequent menu, hacking and combat checks.
 The assembled download has not yet been tested on other installations/PCs.
 Provided as-is; compatibility, individual support and future updates are not
 promised. No motion-controller gameplay is provided.
@@ -19,14 +19,14 @@ audience, but the 4090 is the only tested GPU.
 
 DOWNLOAD THESE THREE REQUIREMENTS
 1. _ScriptCore by alphaZomega and SilverEzredes (page version 1.2.06):
-   <a href="https://www.nexusmods.com/pragmata/mods/24?tab=files">https://www.nexusmods.com/pragmata/mods/24?tab=files</a>
+   https://www.nexusmods.com/pragmata/mods/24?tab=files
 2. HUD Controls by kagenocookie (version 1.3.0, main file):
-   <a href="https://www.nexusmods.com/pragmata/mods/8?tab=files">https://www.nexusmods.com/pragmata/mods/8?tab=files</a>
+   https://www.nexusmods.com/pragmata/mods/8?tab=files
    Use Manual Download on Nexus; sign in if asked.
 3. PureDark AFW beta.6 — direct ZIP download:
-   <a href="https://github.com/PureDark/REFramework/releases/download/RE9_AFW_v1.0-beta.6/RE9AFW_v1.0-beta.6.zip">https://github.com/PureDark/REFramework/releases/download/RE9_AFW_v1.0-beta.6/RE9AFW_v1.0-beta.6.zip</a>
+   https://github.com/PureDark/REFramework/releases/download/RE9_AFW_v1.0-beta.6/RE9AFW_v1.0-beta.6.zip
    Release page if needed:
-   <a href="https://github.com/PureDark/REFramework/releases/tag/RE9_AFW_v1.0-beta.6">https://github.com/PureDark/REFramework/releases/tag/RE9_AFW_v1.0-beta.6</a>
+   https://github.com/PureDark/REFramework/releases/tag/RE9_AFW_v1.0-beta.6
    Yes, this says RE9: its PDAFWPlugin.dll is the exact plugin tested here.
    ONLY PDAFWPlugin.dll is needed. Do NOT copy its other DLLs.
 
@@ -57,8 +57,12 @@ INSTALL — WITH THE GAME CLOSED
 Do not install a nightly or another AFW build over this pack. Our modified
 REFramework is included. Keep the supplied scripts even when their names say
 probe, inspect or test: these particular scripts implement the fixes.
-If you already have our working setup, this release contains no new fixes;
-there is no need to reinstall it.
+UPGRADING AN EXISTING WORKING INSTALLATION
+With the game closed, back up and replace only dinput8.dll and add/replace:
+reframework/autorun/zzzzzzzz_pragmata_hud_orange_test.lua
+Keep your existing other Lua scripts, dependencies and configuration unchanged.
+If these exact V18 and orange-fix files are already installed, no reinstall is needed.
+Temporary audit/capture scripts are not included in this release.
 
 SETTINGS AND FIRST LAUNCH
 - In Virtual Desktop Streamer: OpenXR Runtime = VDXR; codec = AV1 10-bit.
@@ -84,11 +88,14 @@ config.ini is not overwritten by this pack.
 WHAT IS IMPROVED / WHAT REMAINS
 Fixes cover HUD placement, several hacking interfaces, objectives/hints,
 cinematic side bars, Shelter holoscreens, costume selection, Firmware Updater,
-head-following subtitles and the main menu.
+head-following subtitles, the main menu, both Stamp Club interfaces and Bot Database.
+V18 also detects high-priority list-based menus to apply the same trails treatment.
+The orange HUD workaround suppresses one corrupting EffectTexture leaf; the energy
+HUD remained functional in combat and out of combat during headset testing.
+This may also suppress the intended glow of that one effect.
 Remaining compromises: reflective surfaces (especially the Shelter), dark/faint
 location labels, reticle doubling when focusing at a different depth, and some
-loading-screen/cinematic artifacts. Later-game elements outside the first 90 minutes 
-remain untested and may affect play.
+loading-screen/cinematic artifacts. Full-game coverage remains unverified.
 
 IF THIS PACKAGE APPEARS NOT TO WORK
 First check file placement, the three requirements and the settings above.
@@ -108,11 +115,11 @@ CREDITS
 WinterWolf and GPT-6 Astra (Medium)
 
 ADDITIONAL CREDITS:
-praydog — REFramework: <a href="https://github.com/praydog/REFramework">https://github.com/praydog/REFramework</a>
-PureDark — AFW: <a href="https://github.com/PureDark/REFramework">https://github.com/PureDark/REFramework</a>
+praydog — REFramework: https://github.com/praydog/REFramework
+PureDark — AFW: https://github.com/PureDark/REFramework
 kagenocookie — HUD Controls (Nexus link above).
 alphaZomega and SilverEzredes — _ScriptCore (Nexus link above).
 WinterWolf — project direction and headset testing.
 OpenXR loader — Khronos Group/OpenXR contributors.
 
-Third-party notices are in Pragmata_VR_Pack/Notices.</pre></body></html>
+Third-party notices are in Pragmata_VR_Pack/Notices.</pre></html>
